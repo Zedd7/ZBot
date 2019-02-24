@@ -1,31 +1,26 @@
-import asyncio
-import os
 import random
 
 import discord
+from discord.ext import commands
+import pathlib
 
-__version__ = '0.0.1'
+import utils
 
-CONFIG_PATH = '../res/config.txt'
+__version__ = '1.0.0'
 
-
-def load_bot_token(config_path):
-    """Load the bot token from config."""
-    token = None
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as config:
-            bot_token_line = config.readline().rstrip()
-            if len(bot_token_line.split('=')) == 2 and bot_token_line.split('=')[0] == 'BOT_TOKEN':
-                token = bot_token_line.split('=')[1]
-    if token:
-        print(f"Bot token loaded from config: {token}")
-    else:
-        print(f"No bot token could be found in {os.path.abspath(config_path)}")
-    return token
+RES_FOLDER = pathlib.Path().resolve().parent / 'res'
+CONFIG_FILE = RES_FOLDER / 'config.txt'
 
 
 class Client(discord.Client):
     """Represent the client connection which connects to Discord."""
+
+    # bot = commands.Bot(command_prefix='/')
+    #
+    # @bot.command()
+    # async def test(context):
+    #     await context.message.send("test123")
+    #     pass
 
     async def on_ready(self):
         print(f"Logged in as {self.user}")
@@ -61,40 +56,35 @@ class Client(discord.Client):
         """
             Process the command pick.
 
-            Command format : pick <#channel> <message_id> <:emoji:> <seed>
+            Command format : pick <#n> <#channel> <message_id> <:emoji:> <seed>
         """
-        if len(command_args) != 4:
-            await message.channel.send("Incorrect command format. Use `@ZBot pick <#channel> <message_id> <:emoji:> <seed>`")
+        if len(command_args) != 5:
+            await message.channel.send("Incorrect command format. Use `@ZBot pick <#n> <#channel> <message_id> <:emoji:> <seed>`")
             return
 
         try:
-            channel_id = int(command_args[0][2:-1])  # Extract id from <#id>
-            message_id = int(command_args[1])
-            emoji = command_args[2]
-            seed = int(command_args[3])
+            n = int(command_args[0])
+            channel_id = int(command_args[1][2:-1])  # Extract id from <#id>
+            message_id = int(command_args[2])
+            emoji = command_args[3]
+            seed = int(command_args[4])
             channel = discord.utils.get(message.guild.text_channels, id=channel_id)
             target_message = await channel.get_message(message_id)
             reaction = discord.utils.get(target_message.reactions, emoji=emoji)
             users = [_ async for _ in reaction.users()]
             random.seed(seed)
-            winner = random.choice(users)
-            await message.channel.send(f"**Loterie !**\n"
-                                       f"Nous allons procéder au tirage au sort du gagnant parmi {len(users)} participants...")
-            await asyncio.sleep(10)
-            await message.channel.send("Patience...")
-            await asyncio.sleep(30)
-            await message.channel.send("https://media.giphy.com/media/dvgefaMHmaN2g/giphy.gif")
-            await asyncio.sleep(30)
-            await message.channel.send(":zzz: .. Hein heu ?\n\n**Et le gagnant est...**")
-            await asyncio.sleep(10)
-            await message.channel.send(f":champagne: **{winner.mention} !!!** :champagne: ")
+            winners = random.sample(users, n)
+            await message.channel.send(f"**Tirage au sort !** :random_RNG:\n"
+                                       f"Les {n} gagnants parmi {len(users)} participants sont...")
+            for winner in winners:
+                await message.channel.send(f":tada: {winner.mention} :champagne: ")
         except Exception as e:
             print("An error occurred.")
             print(e)
 
 
 if __name__ == '__main__':
-    bot_token = load_bot_token(CONFIG_PATH)
+    bot_token = utils.load_bot_token(CONFIG_FILE)
     if bot_token:
         client = Client()
         client.run(bot_token)
