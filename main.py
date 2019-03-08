@@ -1,15 +1,13 @@
+import os
 import random
 
 import discord
-from discord.ext import commands
-import pathlib
+#from discord.ext import commands
+import dotenv
 
-import utils
+import keep_alive
 
-__version__ = '1.0.0'
-
-RES_FOLDER = pathlib.Path().resolve().parent / 'res'
-CONFIG_FILE = RES_FOLDER / 'config.txt'
+__version__ = '1.0.1'
 
 
 class Client(discord.Client):
@@ -58,23 +56,24 @@ class Client(discord.Client):
 
             Command format : pick <#n> <#channel> <message_id> <:emoji:> <seed>
         """
-        if len(command_args) != 5:
-            await message.channel.send("Incorrect command format. Use `@ZBot pick <#n> <#channel> <message_id> <:emoji:> <seed>`")
+        if len(command_args) != 4:
+            await message.channel.send("Incorrect command format. Use `@ZBot pick <#n> <#channel> <message_id> <:emoji:>`")
             return
 
         try:
+            await message.delete()
             n = int(command_args[0])
             channel_id = int(command_args[1][2:-1])  # Extract id from <#id>
             message_id = int(command_args[2])
             emoji = command_args[3]
-            seed = int(command_args[4])
             channel = discord.utils.get(message.guild.text_channels, id=channel_id)
             target_message = await channel.get_message(message_id)
             reaction = discord.utils.get(target_message.reactions, emoji=emoji)
             users = [_ async for _ in reaction.users()]
+            seed = random.randrange(10**6)
             random.seed(seed)
             winners = random.sample(users, n)
-            await message.channel.send(f"**Tirage au sort !** :random_RNG:\n"
+            await message.channel.send(f"**Tirage au sort !** (seed : {seed})\n"
                                        f"Les {n} gagnants parmi {len(users)} participants sont...")
             for winner in winners:
                 await message.channel.send(f":tada: {winner.mention} :champagne: ")
@@ -84,7 +83,12 @@ class Client(discord.Client):
 
 
 if __name__ == '__main__':
-    bot_token = utils.load_bot_token(CONFIG_FILE)
+    dotenv.load_dotenv()
+    bot_token = os.getenv("BOT_TOKEN")
+    keep_alive.keep_alive()
+
     if bot_token:
         client = Client()
         client.run(bot_token)
+    else:
+        print("You must add the bot token in the .env file under the key 'BOT_TOKEN'.")
