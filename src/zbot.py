@@ -5,7 +5,7 @@ from discord.ext import commands
 
 import src.utils as utils
 
-__version__ = '1.0.2'
+__version__ = '1.0.3'
 
 COGS = ['src.cogs.lottery']
 
@@ -34,7 +34,8 @@ async def on_ready():
 @bot.event
 async def on_command_error(context, error):
     if isinstance(error, commands.CommandNotFound):
-        await context.send("Commande inconnue.")
+        pass  # TODO ignore messages not looking like a command
+        # await context.send("Commande inconnue.")
     elif isinstance(error, commands.NoPrivateMessage):
         await context.send("Cette commande ne peut pas être utilisée en message privé.")
     elif isinstance(error, commands.MissingRequiredArgument):
@@ -54,6 +55,8 @@ async def on_command_error(context, error):
         await context.send(f"Aucun message trouvé pour l'id: `{error.missing_message_id}`")
     elif isinstance(error, utils.ForbiddenEmoji):
         await context.send(f"Cet emoji n'est pas autorisé: {error.forbidden_emoji}")
+    elif isinstance(error, utils.UndersizedArgument):
+        await context.send(f"Cet argument est trop petit: `{error.argument_size}` (max: `{error.min}`)")
     elif isinstance(error, utils.OversizedArgument):
         await context.send(f"Cet argument est trop grand: `{error.argument_size}` (max: `{error.max}`)")
     elif isinstance(error, commands.errors.CheckFailure):
