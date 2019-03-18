@@ -72,6 +72,12 @@ class Lottery:
         embed.set_author(name=f"Organisé par @{organizer.display_name}", icon_url=organizer.avatar_url)
         await dest_channel.send(embed=embed)
 
+        if organizer:
+            for winner in winners:
+                await winner.send(f"Félicitations ! Tu as été tiré au sort lors de la loterie organisée par {organizer.mention} !\n"
+                                  f"Contacte cette personne par MP pour obtenir ta récompense :wink:")
+            await organizer.send(f"Les gagnants de la loterie sont: {', '.join(winner.mention for winner in winners)}")
+
 
 def setup(bot):
     bot.add_cog(Lottery(bot))

@@ -5,7 +5,7 @@ from discord.ext import commands
 
 import src.utils as utils
 
-__version__ = '1.0.3'
+__version__ = '1.0.4'
 
 COGS = ['src.cogs.lottery']
 
