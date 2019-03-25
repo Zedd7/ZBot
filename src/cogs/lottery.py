@@ -5,12 +5,15 @@ import discord
 from discord.ext import commands
 
 import src.utils as utils
+import src.exceptions as exceptions
 
 # TODO allow custom emojis <https://discordpy.readthedocs.io/en/rewrite/ext/commands/commands.html#typing-union>
 # TODO DM players when they attempt to play but don't have the required role
 # TODO DM winners
 # TODO add custom check for allowed channels
 # TODO allow to schedule lottery pick at a given time
+# TODO store hardcoded data in MongoDB
+# TODO allow command arguments to be given one at a time
 
 
 class Lottery:
@@ -52,21 +55,21 @@ class Lottery:
         if not context.author.permissions_in(dest_channel).send_messages:
             raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
         if nb_winners < 1:
-            raise utils.UndersizedArgument(nb_winners, 1)
+            raise exceptions.UndersizedArgument(nb_winners, 1)
 
         seed = random.randrange(10**6)
         random.seed(seed)
         print(f"Picking winner using seed = {seed} ({datetime.datetime.now()})")
 
-        target_message = await utils.try_get_message(utils.MissingMessage(message_id), src_channel, message_id)
-        reaction = await utils.try_get(utils.ForbiddenEmoji(emoji), target_message.reactions, emoji=emoji)
+        target_message = await utils.try_get_message(exceptions.MissingMessage(message_id), src_channel, message_id)
+        reaction = await utils.try_get(exceptions.ForbiddenEmoji(emoji), target_message.reactions, emoji=emoji)
         players = [player async for player in reaction.users() if await utils.has_role(context.guild, player, self.USER_ROLE)]
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
 
         embed = discord.Embed(
             title="Résultat du tirage au sort :tada:",
-            description=f"Gagnant(s) parmi {len(players)} participants:\n" + "\n".join(winner.mention for winner in winners),
+            description=f"Gagnant(s) parmi {len(players)} participants:\n" + "\n".join(f"**@{winner.display_name}**" for winner in winners),
             color=self.EMBED_COLOR
         )
         embed.set_author(name=f"Organisé par @{organizer.display_name}", icon_url=organizer.avatar_url)

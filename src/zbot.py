@@ -1,8 +1,11 @@
 import os
+import sys
+import traceback
 
 import dotenv
 from discord.ext import commands
 
+import src.exceptions as exceptions
 import src.utils as utils
 
 __version__ = '1.0.4'
@@ -49,22 +52,20 @@ async def on_command_error(context, error):
         await utils.send_usage(context)
     elif isinstance(error, commands.MissingPermissions):
         await context.send(f"Permissions requises: {', '.join(error.missing_perms)}")
-    elif isinstance(error, utils.MissingRoles):
+    elif isinstance(error, exceptions.MissingRoles):
         await context.send(f"Rôles requis: {', '.join([f'@{r}' for r in error.missing_roles])}")
-    elif isinstance(error, utils.MissingMessage):
+    elif isinstance(error, exceptions.MissingMessage):
         await context.send(f"Aucun message trouvé pour l'id: `{error.missing_message_id}`")
-    elif isinstance(error, utils.ForbiddenEmoji):
+    elif isinstance(error, exceptions.ForbiddenEmoji):
         await context.send(f"Cet emoji n'est pas autorisé: {error.forbidden_emoji}")
-    elif isinstance(error, utils.UndersizedArgument):
+    elif isinstance(error, exceptions.UndersizedArgument):
         await context.send(f"Cet argument est trop petit: `{error.argument_size}` (max: `{error.min}`)")
-    elif isinstance(error, utils.OversizedArgument):
+    elif isinstance(error, exceptions.OversizedArgument):
         await context.send(f"Cet argument est trop grand: `{error.argument_size}` (max: `{error.max}`)")
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
-        print(f"Caught unhandled error.\n"
-              f"Type: {type(error)}\n"
-              f"Description: {error}")
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
 
 def run():

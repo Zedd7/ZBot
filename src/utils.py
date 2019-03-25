@@ -1,32 +1,7 @@
 import discord
 from discord.ext import commands
 
-
-class MissingRoles(commands.CommandError):
-    def __init__(self, missing_roles):
-        self.missing_roles = missing_roles
-
-
-class MissingMessage(commands.CommandError):
-    def __init__(self, missing_message_id):
-        self.missing_message_id = missing_message_id
-
-
-class ForbiddenEmoji(commands.CommandError):
-    def __init__(self, forbidden_emoji):
-        self.forbidden_emoji = forbidden_emoji
-
-
-class UndersizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, min: int):
-        self.argument_size = argument_size
-        self.min = min
-
-
-class OversizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, max: int):
-        self.argument_size = argument_size
-        self.max = max
+import src.exceptions as exceptions
 
 
 async def send_usage(context):
@@ -49,7 +24,7 @@ async def get_usage(parent_command, command_name):
     if parent_command.name == command_name:
         return parent_command.usage
     else:
-        for subcommand in parent_command.all_commands.values():
+        for subcommand in parent_command.all_commands.values():  # TODO fix for @commands.command which don't have a 'all_commands' attribute
             command_usage = await get_usage(subcommand, command_name)
             if command_usage:
                 return command_usage
@@ -67,7 +42,7 @@ async def has_any_mod_role(context, print_error=True):
             if author_role_name in context.cog.MOD_ROLES:
                 return True
         if print_error:
-            raise MissingRoles(context.cog.MOD_ROLES)
+            raise exceptions.MissingRoles(context.cog.MOD_ROLES)
     else:
         print(f"No mod role defined for {context.cog}.")
     return False
