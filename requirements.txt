@@ -1,4 +1,7 @@
-git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
 apscheduler
+asyncio
+git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
 flask
+python-dateutil
 python-dotenv
+pytz

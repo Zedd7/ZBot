@@ -1,6 +1,6 @@
 import keep_alive
-import src.zbot as zbot
+import zbot.zbot as bot
 
 if __name__ == '__main__':
     keep_alive.keep_alive()
-    zbot.run()
+    bot.run()

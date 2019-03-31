@@ -17,12 +17,12 @@ class ForbiddenEmoji(commands.CommandError):
 
 
 class UndersizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, min: int):
+    def __init__(self, argument_size: int, min_size: int):
         self.argument_size = argument_size
-        self.min = min
+        self.min_size = min_size
 
 
 class OversizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, max: int):
+    def __init__(self, argument_size: int, max_size: int):
         self.argument_size = argument_size
-        self.max = max
+        self.max_size = max_size

@@ -5,12 +5,12 @@ import traceback
 import dotenv
 from discord.ext import commands
 
-import src.exceptions as exceptions
-import src.utils as utils
+from . import exceptions
+from . import utils
 
-__version__ = '1.0.4'
+__version__ = '1.0.5'
 
-COGS = ['src.cogs.lottery']
+COGS = ['zbot.cogs.lottery']
 
 
 def get_prefix(client, message):
@@ -59,9 +59,9 @@ async def on_command_error(context, error):
     elif isinstance(error, exceptions.ForbiddenEmoji):
         await context.send(f"Cet emoji n'est pas autorisé: {error.forbidden_emoji}")
     elif isinstance(error, exceptions.UndersizedArgument):
-        await context.send(f"Cet argument est trop petit: `{error.argument_size}` (max: `{error.min}`)")
+        await context.send(f"Cet argument est trop petit: `{error.argument_size}` (min: `{error.min_size}`)")
     elif isinstance(error, exceptions.OversizedArgument):
-        await context.send(f"Cet argument est trop grand: `{error.argument_size}` (max: `{error.max}`)")
+        await context.send(f"Cet argument est trop grand: `{error.argument_size}` (max: `{error.max_size}`)")
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
