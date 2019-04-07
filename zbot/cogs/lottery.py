@@ -1,4 +1,5 @@
-import asyncio
+# -*- coding: utf-8 -*-
+
 import http
 import random
 import sys
@@ -7,9 +8,13 @@ import traceback
 import discord
 from discord.ext import commands
 
+from zbot import checks
 from zbot import converters
 from zbot import exceptions
+from zbot import scheduler
 from zbot import utils
+
+_bot = None
 
 
 class Lottery(commands.Cog):
@@ -40,7 +45,7 @@ class Lottery(commands.Cog):
         usage="<annonce> <emoji> <nb_winners> <#dest_channel> <timestamp>",
         ignore_extra=False
     )
-    @commands.check(utils.has_any_mod_role)  # TODO check that player authorize PMs
+    @commands.check(checks.has_any_mod_role)
     async def setup(self, context, announce: str, emoji: str, nb_winners: int, dest_channel: discord.TextChannel, timestamp: converters.to_datetime):
         if not context.author.permissions_in(dest_channel).send_messages:
             raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
@@ -51,22 +56,16 @@ class Lottery(commands.Cog):
             min_argument_size = converters.humanize_datetime(await utils.get_current_time())
             raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
-        organizer = context.author  # TODO  set author avatar and name
+        organizer = context.author  # TODO display author avatar and name
         embed = discord.Embed(
             title=f"Tirage au sort programmé pour le {converters.humanize_datetime(timestamp)} :alarm_clock:",
             color=self.EMBED_COLOR
         )
         message = await utils.make_announce(context, dest_channel, self.ANNOUNCE_ROLE_NAME, announce, embed)
-        message_id = message.id
-        sleep_duration = timestamp - await utils.get_current_time()
         # TODO add reaction
 
-        await asyncio.sleep(sleep_duration.total_seconds())
-
-        # TODO remove itself from reactions
-        await Lottery.prepare_seed()
-        message, players, winners = await Lottery.pick_winners(context, dest_channel, message_id, emoji, nb_winners)
-        await Lottery.announce_winners(winners, players, organizer, message)
+        args = [dest_channel.id, message.id, emoji, nb_winners, organizer.id]
+        scheduler.schedule(timestamp, Lottery.draw, args, 'lottery')
 
     @lottery.command(
         name='pick',
@@ -74,7 +73,7 @@ class Lottery(commands.Cog):
         usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [<organiser>]",
         ignore_extra=False
     )
-    @commands.check(utils.has_any_mod_role)
+    @commands.check(checks.has_any_mod_role)
     async def pick(self,
                    context,
                    src_channel: discord.TextChannel,
@@ -89,8 +88,15 @@ class Lottery(commands.Cog):
         if nb_winners < 1:
             raise exceptions.UndersizedArgument(nb_winners, 1)
 
+        await Lottery.draw(src_channel.id, message_id, emoji, nb_winners, organizer.id)
+
+    @staticmethod
+    async def draw(channel_id, message_id, emoji, nb_winners, organizer_id):
+        # TODO remove itself from reactions
+        channel = _bot.get_channel(channel_id)
+        organizer = _bot.get_user(organizer_id)
         await Lottery.prepare_seed()
-        message, players, winners = await Lottery.pick_winners(context, src_channel, message_id, emoji, nb_winners)
+        message, players, winners = await Lottery.pick_winners(channel, message_id, emoji, nb_winners)
         await Lottery.announce_winners(winners, players, organizer, message)
 
     @staticmethod
@@ -98,13 +104,13 @@ class Lottery(commands.Cog):
         seed = random.randrange(10 ** 6)  # 6 digits seed
         random.seed(seed)
         current_time = await utils.get_current_time()
-        print(f"Picking winner using seed = {seed} ({current_time})")
+        print(f"Picking winners using seed = {seed} ({current_time})")
 
     @staticmethod
-    async def pick_winners(context, channel, message_id, emoji, nb_winners):
+    async def pick_winners(channel, message_id, emoji, nb_winners):
         message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
         reaction = await utils.try_get(exceptions.ForbiddenEmoji(emoji), message.reactions, emoji=emoji)
-        players = [player async for player in reaction.users() if await utils.has_role(context.guild, player, Lottery.USER_ROLE_NAME)]
+        players = [player async for player in reaction.users() if await utils.has_role(channel.guild, player, Lottery.USER_ROLE_NAME)]
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
         return message, players, winners
@@ -113,7 +119,7 @@ class Lottery(commands.Cog):
     async def announce_winners(winners, players, organizer, message):
         embed = discord.Embed(
             title="Résultat du tirage au sort :tada:",
-            description=f"Gagnant(s) parmi {len(players)} participants:\n" + await utils.list_users(winners, "\n"),
+            description=f"Gagnant(s) parmi {len(players)} participants:\n" + await utils.get_user_list(winners, "\n"),
             color=Lottery.EMBED_COLOR
         )
         if organizer:
@@ -121,6 +127,7 @@ class Lottery(commands.Cog):
         await message.edit(embed=embed)
 
         if organizer:
+            # DM winners
             unreachable_winners = []
             for winner in winners:
                 try:
@@ -131,12 +138,17 @@ class Lottery(commands.Cog):
                     if error.status != http.HTTPStatus.FORBIDDEN:  # DMs blocked by user
                         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
                     unreachable_winners.append(winner)
-            winner_list = await utils.list_users(winners)
+            # DM organizer
+            winner_list = await utils.get_user_list(winners)
             await organizer.send(f"Les gagnants de la loterie sont: {winner_list}")
             if unreachable_winners:
-                unreachable_winner_list = await utils.list_users(unreachable_winners)
+                unreachable_winner_list = await utils.get_user_list(unreachable_winners)
                 await organizer.send(f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
+            # Log winners
+            print(f"Winners : {winner_list}")
 
 
 def setup(bot):
     bot.add_cog(Lottery(bot))
+    global _bot
+    _bot = bot

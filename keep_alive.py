@@ -1,5 +1,8 @@
-from flask import Flask
+# -*- coding: utf-8 -*-
+
 from threading import Thread
+
+from flask import Flask
 
 app = Flask('')
 

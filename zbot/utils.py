@@ -1,12 +1,23 @@
+# -*- coding: utf-8 -*-
+
 import datetime
 
 import discord
 import pytz
 from discord.ext import commands
 
-import zbot.exceptions as exceptions
-
 TIMEZONE = pytz.timezone('Europe/Brussels')
+
+
+async def get_usage(parent_command, command_name):
+    if parent_command.name == command_name:
+        return parent_command.usage
+    else:
+        for subcommand in parent_command.all_commands.values():  # TODO fix for @commands.command which don't have an 'all_commands' attribute
+            command_usage = await get_usage(subcommand, command_name)
+            if command_usage:
+                return command_usage
+    return None
 
 
 async def send_usage(context):
@@ -25,34 +36,6 @@ async def send_usage(context):
         print(f"No main command defined for {context.cog}.")
 
 
-async def get_usage(parent_command, command_name):
-    if parent_command.name == command_name:
-        return parent_command.usage
-    else:
-        for subcommand in parent_command.all_commands.values():  # TODO fix for @commands.command which don't have a 'all_commands' attribute
-            command_usage = await get_usage(subcommand, command_name)
-            if command_usage:
-                return command_usage
-    return None
-
-
-async def has_any_mod_role(context, print_error=True):
-    # Check if DM channel as some commands may be allowed in DMs
-    if isinstance(context.message.channel, discord.DMChannel):
-        raise commands.NoPrivateMessage()
-
-    if hasattr(context.cog, 'MOD_ROLE_NAMES'):
-        author_role_names = [role.name for role in context.author.roles]
-        for author_role_name in author_role_names:
-            if author_role_name in context.cog.MOD_ROLE_NAMES:
-                return True
-        if print_error:
-            raise exceptions.MissingRoles(context.cog.MOD_ROLE_NAMES)
-    else:
-        print(f"No mod role defined for {context.cog}.")
-    return False
-
-
 async def has_role(guild: discord.Guild, user: discord.User, role_name: str):
     member = guild.get_member(user.id)
     if member:
@@ -66,7 +49,7 @@ async def get_current_time():
     return datetime.datetime.now(TIMEZONE)
 
 
-async def list_users(users, separator=", "):
+async def get_user_list(users, separator=", "):
     return separator.join(user.mention for user in users)
 
 

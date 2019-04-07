@@ -1,13 +1,15 @@
+# -*- coding: utf-8 -*-
+
 import datetime
 
+import dateutil.parser
 import pytz
-from dateutil import parser
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
 
 
 def to_datetime(instant: str):
-    timestamp = parser.parse(instant)
+    timestamp = dateutil.parser.parse(instant)
     return TIMEZONE.localize(timestamp)
 
 

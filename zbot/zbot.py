@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import os
 import sys
 import traceback
@@ -5,10 +7,12 @@ import traceback
 import dotenv
 from discord.ext import commands
 
+from . import database
 from . import exceptions
+from . import scheduler
 from . import utils
 
-__version__ = '1.0.5'
+__version__ = '1.0.6'
 
 COGS = ['zbot.cogs.lottery']
 
@@ -70,8 +74,15 @@ async def on_command_error(context, error):
 
 def run():
     dotenv.load_dotenv()
+    db = database.MongoDBDonnector()
+    db.open_connection()
+    scheduler.setup(db)
     bot_token = os.getenv("BOT_TOKEN")
     if bot_token:
         bot.run(bot_token, bot=True, reconnect=True)
     else:
         print("Not bot token found in .env file under the key 'BOT_TOKEN'.")
+
+
+if __name__ == '__main__':
+    run()
