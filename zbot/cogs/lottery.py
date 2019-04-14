@@ -10,6 +10,7 @@ from discord.ext import commands
 
 from zbot import checks
 from zbot import converters
+from zbot import error_handler
 from zbot import exceptions
 from zbot import scheduler
 from zbot import utils
@@ -95,9 +96,22 @@ class Lottery(commands.Cog):
         # TODO remove itself from reactions
         channel = _bot.get_channel(channel_id)
         organizer = _bot.get_user(organizer_id)
-        await Lottery.prepare_seed()
-        message, players, winners = await Lottery.pick_winners(channel, message_id, emoji, nb_winners)
-        await Lottery.announce_winners(winners, players, organizer, message)
+        message = None
+        try:
+            message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
+            reaction = await utils.try_get(exceptions.ForbiddenEmoji(emoji), message.reactions, emoji=emoji)
+            await Lottery.prepare_seed()
+            message, players, winners = await Lottery.pick_winners(channel, message, reaction, nb_winners)
+            await Lottery.announce_winners(winners, players, organizer, message)
+        except commands.CommandError as error:
+            context = commands.Context(
+                bot=_bot,
+                cog=Lottery,
+                prefix=_bot.command_prefix,
+                channel=channel,
+                message=message,
+            )
+            await error_handler.handle(context, error)
 
     @staticmethod
     async def prepare_seed():
@@ -107,9 +121,7 @@ class Lottery(commands.Cog):
         print(f"Picking winners using seed = {seed} ({current_time})")
 
     @staticmethod
-    async def pick_winners(channel, message_id, emoji, nb_winners):
-        message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
-        reaction = await utils.try_get(exceptions.ForbiddenEmoji(emoji), message.reactions, emoji=emoji)
+    async def pick_winners(channel, message, reaction, nb_winners):
         players = [player async for player in reaction.users() if await utils.has_role(channel.guild, player, Lottery.USER_ROLE_NAME)]
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
@@ -145,6 +157,7 @@ class Lottery(commands.Cog):
                 unreachable_winner_list = await utils.get_user_list(unreachable_winners)
                 await organizer.send(f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
             # Log winners
+            winner_list = await utils.get_user_list(winners, mention=False)
             print(f"Winners : {winner_list}")
 
 
