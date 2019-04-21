@@ -4,6 +4,7 @@ import http
 import random
 import sys
 import traceback
+import typing
 
 import discord
 from discord.ext import commands
@@ -16,8 +17,6 @@ from zbot import scheduler
 from zbot import utils
 from . import command
 
-_bot = None
-
 
 class Lottery(command.Command):
 
@@ -26,6 +25,8 @@ class Lottery(command.Command):
     USER_ROLE_NAME = 'Joueur'
     ANNOUNCE_ROLE_NAME = 'Abonné Annonces'
     EMBED_COLOR = 0xFAA61A
+
+    pending_lotteries = {}
 
     def __init__(self, bot):
         super(Lottery, self).__init__(bot)
@@ -46,7 +47,12 @@ class Lottery(command.Command):
         ignore_extra=False
     )
     @commands.check(checks.has_any_mod_role)
-    async def setup(self, context, announce: str, emoji: str, nb_winners: int, dest_channel: discord.TextChannel, timestamp: converters.to_datetime):
+    async def setup(self, context,
+                    announce: str,
+                    emoji: typing.Union[discord.Emoji, str],
+                    nb_winners: int,
+                    dest_channel: discord.TextChannel,
+                    timestamp: converters.to_datetime):
         if not context.author.permissions_in(dest_channel).send_messages:
             raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
         if nb_winners < 1:
@@ -56,51 +62,32 @@ class Lottery(command.Command):
             min_argument_size = converters.humanize_datetime(await utils.get_current_time())
             raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
-        organizer = context.author  # TODO display author avatar and name
+        organizer = context.author
         embed = discord.Embed(
             title=f"Tirage au sort programmé pour le {converters.humanize_datetime(timestamp)} :alarm_clock:",
             color=self.EMBED_COLOR
         )
+        embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
         message = await utils.make_announce(context, dest_channel, self.ANNOUNCE_ROLE_NAME, announce, embed)
-        # TODO add reaction
+        await message.add_reaction(emoji)
 
-        args = [dest_channel.id, message.id, emoji, nb_winners, organizer.id]
-        scheduler.schedule(timestamp, Lottery.draw, args, 'lottery')
-
-    @lottery.command(
-        name='pick',
-        aliases=['p'],
-        usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [<organiser>]",
-        ignore_extra=False
-    )
-    @commands.check(checks.has_any_mod_role)
-    async def pick(self,
-                   context,
-                   src_channel: discord.TextChannel,
-                   message_id: int,
-                   emoji: str,
-                   nb_winners: int,
-                   dest_channel: discord.TextChannel,
-                   organizer: discord.User = None):
-
-        if not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
-        if nb_winners < 1:
-            raise exceptions.UndersizedArgument(nb_winners, 1)
-
-        await Lottery.draw(src_channel.id, message_id, emoji, nb_winners, organizer.id)
+        Lottery.pending_lotteries[message.id] = emoji
+        args = [dest_channel.id, message.id, emoji if isinstance(emoji, str) else emoji.id, nb_winners, organizer.id]
+        scheduler.schedule(timestamp, Lottery.setup_callback, args, 'lottery')
 
     @staticmethod
-    async def draw(channel_id, message_id, emoji, nb_winners, organizer_id):
-        # TODO remove itself from reactions
+    async def setup_callback(channel_id, message_id, emoji_code, nb_winners, organizer_id):
+        del Lottery.pending_lotteries[message_id]
         channel = command.bot().get_channel(channel_id)
-        organizer = command.bot().get_user(organizer_id)
         message = None
+        if isinstance(emoji_code, str):  # Emoji is a unicode string
+            emoji = emoji_code
+        else:  # Emoji is a custom one (discord.Emoji) and emoji_code is its id
+            emoji = discord.utils.find(lambda e: e.id == emoji_code, command.bot().emojis)
+        organizer = command.bot().get_user(organizer_id)
         try:
-            message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
-            reaction = await utils.try_get(exceptions.ForbiddenEmoji(emoji), message.reactions, emoji=emoji)
-            await Lottery.prepare_seed()
-            message, players, winners = await Lottery.pick_winners(channel, message, reaction, nb_winners)
+            message, players, reaction, winners = await Lottery.draw(channel, emoji, message_id, nb_winners)
+            await reaction.remove(command.bot().user)
             await Lottery.announce_winners(winners, players, organizer, message)
         except commands.CommandError as error:
             context = commands.Context(
@@ -112,25 +99,65 @@ class Lottery(command.Command):
             )
             await error_handler.handle(context, error)
 
+    @lottery.command(
+        name='pick',
+        aliases=['p'],
+        usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [<organiser>]",
+        ignore_extra=False
+    )
+    @commands.check(checks.has_any_mod_role)
+    async def pick(self,
+                   context: commands.Context,
+                   src_channel: discord.TextChannel,
+                   message_id: int,
+                   emoji: typing.Union[discord.Emoji, str],
+                   nb_winners: int,
+                   dest_channel: discord.TextChannel,
+                   organizer: discord.User = None,
+                   seed: int = None):
+
+        if not context.author.permissions_in(dest_channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+        if nb_winners < 1:
+            raise exceptions.UndersizedArgument(nb_winners, 1)
+
+        message, players, reaction, winners = await Lottery.draw(src_channel, emoji, message_id, nb_winners, seed)
+        announce_message = await context.send(
+            discord.utils.escape_mentions(f"Tirage au sort sur base de la réaction {emoji} à :\n{message.content}")
+        )
+        await Lottery.announce_winners(winners, players, organizer, announce_message)
+
     @staticmethod
-    async def prepare_seed():
-        seed = random.randrange(10 ** 6)  # 6 digits seed
+    async def draw(channel, emoji, message_id, nb_winners, seed=None):
+        await Lottery.prepare_seed(seed)
+        message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
+        reaction = await utils.try_get(exceptions.MissingEmoji(emoji), message.reactions, emoji=emoji)
+        players, winners = await Lottery.pick_winners(channel, reaction, nb_winners)
+        return message, players, reaction, winners
+
+    @staticmethod
+    async def prepare_seed(default_seed=None):
+        seed = default_seed if default_seed else random.randrange(10 ** 6)  # 6 digits seed
         random.seed(seed)
         current_time = await utils.get_current_time()
         print(f"Picking winners using seed = {seed} ({current_time})")
 
     @staticmethod
-    async def pick_winners(channel, message, reaction, nb_winners):
-        players = [player async for player in reaction.users() if await utils.has_role(channel.guild, player, Lottery.USER_ROLE_NAME)]
+    async def pick_winners(channel, reaction, nb_winners):
+        players = [
+            player async for player in reaction.users()
+            if await utils.has_role(channel.guild, player, Lottery.USER_ROLE_NAME)
+            and player != command.bot().user
+        ]
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
-        return message, players, winners
+        return players, winners
 
     @staticmethod
-    async def announce_winners(winners, players, organizer, message):
+    async def announce_winners(winners, players, organizer=None, message=None):
         embed = discord.Embed(
             title="Résultat du tirage au sort :tada:",
-            description=f"Gagnant(s) parmi {len(players)} participants:\n" + await utils.get_user_list(winners, "\n"),
+            description=f"Gagnant(s) parmi {len(players)} participant(s):\n" + await utils.get_user_list(winners, "\n"),
             color=Lottery.EMBED_COLOR
         )
         if organizer:
@@ -158,6 +185,19 @@ class Lottery(command.Command):
             # Log winners
             winner_list = await utils.get_user_list(winners, mention=False)
             print(f"Winners : {winner_list}")
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        message = reaction.message
+        message_id = message.id
+        emoji = reaction.emoji
+        if message_id in Lottery.pending_lotteries and emoji == Lottery.pending_lotteries[message_id] \
+                and not await utils.has_role(message.channel.guild, user, Lottery.USER_ROLE_NAME):
+            try:
+                await user.send(f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAME} pour participer à cette loterie.")
+                await message.remove_reaction(emoji, user)
+            except (discord.errors.HTTPException, discord.errors.NotFound):
+                pass
 
 
 def setup(bot):

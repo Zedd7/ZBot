@@ -41,7 +41,7 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
     """
     Recursively search for the given command in the subcommands of the parent command and return it.
     :param parent_command: commands.Command
-    :param command_name: str
+    :param subcommand_name: str
     :return: command: commands.Command
     """
     if parent_command.name == subcommand_name:

@@ -13,9 +13,9 @@ class MissingMessage(commands.CommandError):
         self.missing_message_id = missing_message_id
 
 
-class ForbiddenEmoji(commands.CommandError):
-    def __init__(self, forbidden_emoji):
-        self.forbidden_emoji = forbidden_emoji
+class MissingEmoji(commands.CommandError):
+    def __init__(self, missing_emoji):
+        self.missing_emoji = missing_emoji
 
 
 class UndersizedArgument(commands.CommandError):

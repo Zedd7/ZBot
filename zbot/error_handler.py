@@ -30,8 +30,8 @@ async def handle(context, error):
         await context.send(f"Rôles requis: {', '.join([f'@{r}' for r in error.missing_roles])}")
     elif isinstance(error, exceptions.MissingMessage):
         await context.send(f"Aucun message trouvé pour l'id: `{error.missing_message_id}`")
-    elif isinstance(error, exceptions.ForbiddenEmoji):
-        await context.send(f"Cet emoji n'est pas autorisé: {error.forbidden_emoji}")
+    elif isinstance(error, exceptions.MissingEmoji):
+        await context.send(f"Cet emoji n'a pas été trouvé: {error.missing_emoji}")
     elif isinstance(error, exceptions.UndersizedArgument):
         await context.send(f"Cet argument est trop petit: `{error.argument_size}` (min: `{error.min_size}`)")
     elif isinstance(error, exceptions.OversizedArgument):
