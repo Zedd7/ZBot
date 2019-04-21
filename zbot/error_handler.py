@@ -39,4 +39,8 @@ async def handle(context, error):
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        print_traceback(error)
+
+
+def print_traceback(error):
+    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)

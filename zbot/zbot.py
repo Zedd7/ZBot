@@ -4,14 +4,15 @@ import os
 
 import dotenv
 from discord.ext import commands
+from discord.ext.commands import ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed
 
 from . import database
 from . import error_handler
 from . import scheduler
 
-__version__ = '1.0.6'
+__version__ = '1.0.7'
 
-COGS = ['zbot.cogs.lottery']
+COGS = ['zbot.cogs.config', 'zbot.cogs.lottery']
 
 
 def get_prefix(client, message):
@@ -31,8 +32,12 @@ async def on_ready():
     bot.remove_command('help')
     print(f"Logged in as {bot.user}.")
     for cog in COGS:
-        bot.load_extension(cog)
-        print(f"Loaded extension '{cog.split('.')[-1]}'.")
+        try:
+            bot.load_extension(cog)
+            print(f"Loaded extension '{cog.split('.')[-1]}'.")
+        except (ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed) as error:
+            print(f"Failed to loaded extension '{cog.split('.')[-1]}'.")
+            error_handler.print_traceback(error)
 
 
 @bot.event
@@ -50,7 +55,3 @@ def run():
         bot.run(bot_token, bot=True, reconnect=True)
     else:
         print("Not bot token found in .env file under the key 'BOT_TOKEN'.")
-
-
-if __name__ == '__main__':
-    run()

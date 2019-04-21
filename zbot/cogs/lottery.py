@@ -14,11 +14,12 @@ from zbot import error_handler
 from zbot import exceptions
 from zbot import scheduler
 from zbot import utils
+from . import command
 
 _bot = None
 
 
-class Lottery(commands.Cog):
+class Lottery(command.Command):
 
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
@@ -27,8 +28,7 @@ class Lottery(commands.Cog):
     EMBED_COLOR = 0xFAA61A
 
     def __init__(self, bot):
-        self.bot = bot
-        self.user = self.bot.user
+        super(Lottery, self).__init__(bot)
 
     @commands.group(
         name=MAIN_COMMAND_NAME,
@@ -38,7 +38,6 @@ class Lottery(commands.Cog):
     async def lottery(self, context):
         if context.invoked_subcommand is None:
             await context.send("Commande manquante.")
-            # TODO display help
 
     @lottery.command(
         name='setup',
@@ -94,8 +93,8 @@ class Lottery(commands.Cog):
     @staticmethod
     async def draw(channel_id, message_id, emoji, nb_winners, organizer_id):
         # TODO remove itself from reactions
-        channel = _bot.get_channel(channel_id)
-        organizer = _bot.get_user(organizer_id)
+        channel = command.bot().get_channel(channel_id)
+        organizer = command.bot().get_user(organizer_id)
         message = None
         try:
             message = await utils.try_get_message(exceptions.MissingMessage(message_id), channel, message_id)
@@ -105,9 +104,9 @@ class Lottery(commands.Cog):
             await Lottery.announce_winners(winners, players, organizer, message)
         except commands.CommandError as error:
             context = commands.Context(
-                bot=_bot,
+                bot=command.bot(),
                 cog=Lottery,
-                prefix=_bot.command_prefix,
+                prefix=command.bot().command_prefix,
                 channel=channel,
                 message=message,
             )
@@ -163,5 +162,4 @@ class Lottery(commands.Cog):
 
 def setup(bot):
     bot.add_cog(Lottery(bot))
-    global _bot
-    _bot = bot
+    command.setup(bot)
