@@ -38,12 +38,12 @@ class Lottery(command.Command):
     @commands.guild_only()
     async def lottery(self, context):
         if context.invoked_subcommand is None:
-            await context.send("Commande manquante.")
+            await context.send("Commande manquante ou inconnue.")
 
     @lottery.command(
         name='setup',
         aliases=['s', 'set', 'plan'],
-        usage="<annonce> <emoji> <nb_winners> <#dest_channel> <timestamp>",
+        usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <timestamp>",
         ignore_extra=False
     )
     @commands.check(checks.has_any_mod_role)

@@ -11,7 +11,7 @@ TIMEZONE = pytz.timezone('Europe/Brussels')
 
 async def send_usage(context, command_name) -> None:
     command = await get_command(context, command_name)
-    command_usage = command.usage
+    command_usage = command.usage if command else None
     if command_usage:
         bot_user = context.bot.user
         prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
@@ -46,7 +46,7 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
     """
     if parent_command.name == subcommand_name:
         return parent_command
-    else:
+    elif isinstance(parent_command, commands.core.Group):
         for candidate_subcommand in parent_command.all_commands.values():
             subcommand = await get_subcommand(candidate_subcommand, subcommand_name)
             if subcommand:
