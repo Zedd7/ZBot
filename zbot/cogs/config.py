@@ -12,6 +12,7 @@ class Config(command.Command):
 
     MAIN_COMMAND_NAME = 'config'
     MOD_ROLE_NAMES = ['Administrateur']
+    USER_ROLE_NAMES = []
 
     def __init__(self, bot):
         super(Config, self).__init__(bot)

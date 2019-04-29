@@ -26,6 +26,8 @@ async def handle(context, error):
         await utils.send_usage(context, context.invoked_with)
     elif isinstance(error, commands.MissingPermissions):
         await context.send(f"Permissions requises: {', '.join(error.missing_perms)}")
+    elif isinstance(error, exceptions.MissingUser):
+        await context.send(f"Utilisateur Discord inconnu: `{error.missing_user_name}`")
     elif isinstance(error, exceptions.MissingRoles):
         await context.send(f"Rôles requis: {', '.join([f'@{r}' for r in error.missing_roles])}")
     elif isinstance(error, exceptions.MissingMessage):
@@ -36,6 +38,10 @@ async def handle(context, error):
         await context.send(f"Cet argument est trop petit: `{error.argument_size}` (min: `{error.min_size}`)")
     elif isinstance(error, exceptions.OversizedArgument):
         await context.send(f"Cet argument est trop grand: `{error.argument_size}` (max: `{error.max_size}`)")
+    elif isinstance(error, exceptions.UnknowPlayer):
+        await context.send(f"Joueur WoT inconnu: `{error.unknown_player_name}`")
+    elif isinstance(error, exceptions.UnknowClan):
+        await context.send(f"Clan WoT inconnu: `{error.unknown_clan_name}`")
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:

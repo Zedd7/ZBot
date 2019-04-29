@@ -22,7 +22,7 @@ class Lottery(command.Command):
 
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
-    USER_ROLE_NAME = 'Joueur'
+    USER_ROLE_NAMES = ['Joueur']
     ANNOUNCE_ROLE_NAME = 'Abonné Annonces'
     EMBED_COLOR = 0xFAA61A
 
@@ -146,7 +146,7 @@ class Lottery(command.Command):
     async def pick_winners(channel, reaction, nb_winners):
         players = [
             player async for player in reaction.users()
-            if await utils.has_role(channel.guild, player, Lottery.USER_ROLE_NAME)
+            if await checks.has_any_role(channel.guild, player, Lottery.USER_ROLE_NAMES)
             and player != command.bot().user
         ]
         nb_winners = min(nb_winners, len(players))
@@ -192,9 +192,9 @@ class Lottery(command.Command):
         message_id = message.id
         emoji = reaction.emoji
         if message_id in Lottery.pending_lotteries and emoji == Lottery.pending_lotteries[message_id] \
-                and not await utils.has_role(message.channel.guild, user, Lottery.USER_ROLE_NAME):
+                and not await checks.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
             try:
-                await user.send(f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAME} pour participer à cette loterie.")
+                await user.send(f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
                 await message.remove_reaction(emoji, user)
             except (discord.errors.HTTPException, discord.errors.NotFound):
                 pass

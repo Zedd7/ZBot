@@ -7,7 +7,9 @@ _bot = None
 
 class Command(commands.Cog):
 
-    MAIN_COMMAND_NAME = None
+    MAIN_COMMAND_NAME = 'undefined command'
+    MOD_ROLE_NAMES = ['Administrateur']
+    USER_ROLE_NAMES = []
 
     def __init__(self, bot):
         self.bot = bot

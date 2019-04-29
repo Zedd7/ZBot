@@ -10,9 +10,13 @@ from . import database
 from . import error_handler
 from . import scheduler
 
-__version__ = '1.0.8'
+__version__ = '1.1.0'
 
-COGS = ['zbot.cogs.config', 'zbot.cogs.lottery']
+COGS = [
+    'zbot.cogs.config',
+    'zbot.cogs.lottery',
+    'zbot.cogs.stats',
+]
 
 
 def get_prefix(client, message):
@@ -50,7 +54,7 @@ def run():
     db = database.MongoDBDonnector()
     db.open_connection()
     scheduler.setup(db)
-    bot_token = os.getenv("BOT_TOKEN")
+    bot_token = os.getenv('BOT_TOKEN')
     if bot_token:
         bot.run(bot_token, bot=True, reconnect=True)
     else:

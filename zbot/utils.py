@@ -54,15 +54,6 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
     return None
 
 
-async def has_role(guild: discord.Guild, user: discord.User, role_name: str):
-    member = guild.get_member(user.id)
-    if member:
-        role = discord.utils.get(member.roles, name=role_name)
-        if role:
-            return True
-    return False
-
-
 async def get_current_time():
     return datetime.datetime.now(TIMEZONE)
 
