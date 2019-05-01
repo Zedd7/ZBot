@@ -58,7 +58,7 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
     return None
 
 
-# User manipulations
+# WoT data manipulations
 
 async def parse_player(context, player):
     # Try to cast player name as Discord guild member

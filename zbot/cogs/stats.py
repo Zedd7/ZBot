@@ -2,6 +2,7 @@
 
 import datetime
 import os
+import re
 import typing
 from pathlib import Path
 
@@ -21,6 +22,8 @@ class Stats(command.Command):
 
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
+    CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
+    EMBED_COLOR = 0xCACBCE
     EXP_VALUES_FILE_PATH = Path('./res/wn8_exp_values.json')
     EXP_VALUES_FILE_URL = 'https://static.modxvm.com/wn8-data-exp/json/wn8exp.json'
     WN8_COLORS = {  # Following color chart of https://en.wot-life.com/
@@ -44,7 +47,7 @@ class Stats(command.Command):
     @commands.command(
         name='stats',
         aliases=['stat'],
-        usage="<joueur>",
+        usage="[<joueur>]",
         ignore_extra=False,
     )
     @commands.guild_only()
@@ -61,7 +64,7 @@ class Stats(command.Command):
         wn8 = await Stats.compute_wn8(adjusted_stats_totals, exp_stat_totals)
 
         player_details = {
-            'player_name': player_name,
+            'name': player_name,
             'battles': stats_totals['battles'],
             'average_xp': stats_totals['average_xp'],
             'rating': stats_totals['rating'],
@@ -75,8 +78,8 @@ class Stats(command.Command):
         embed_color = [color for wn8, color in sorted(self.WN8_COLORS.items()) if player_details['wn8'] >= wn8][-1]
         embed = discord.Embed(color=embed_color)
         embed.set_author(
-            name=player_details['player_name'],
-            url=f"https://fr.wot-life.com/eu/player/{player_details['player_name']}/",
+            name=player_details['name'],
+            url=f"https://fr.wot-life.com/eu/player/{player_details['name']}/",
             icon_url=player.avatar_url if isinstance(player, discord.Member) else ''
         )
         embed.add_field(name="Batailles", value=f"{player_details['battles']: .0f}", inline=True)
@@ -85,6 +88,127 @@ class Stats(command.Command):
         embed.add_field(name="Taux de victoires", value=f"{player_details['win_ratio']: .2f} %", inline=True)
         embed.add_field(name="WN8", value=f"{player_details['wn8']: .0f}", inline=True)
         embed.add_field(name="Cote personnelle", value=f"{player_details['rating']: .0f}", inline=True)
+        await context.send(embed=embed)
+
+    @commands.command(
+        name='profile',
+        aliases=['profil'],
+        usage="[<joueur>]",
+        ignore_extra=False,
+    )
+    @commands.guild_only()
+    @commands.check(checks.has_any_user_role)
+    async def profile(self, context, player: typing.Union[discord.Member, str] = None):
+        player, player_name = await utils.parse_player(context, player)
+        player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
+        if not player_id:
+            raise exceptions.UnknowPlayer(player_name)
+        creation_timestamp, last_battle_timestamp, logout_timestamp, clan_id = await Stats.get_player_info(player_id, self.app_id)
+        clan_position = await Stats.get_clan_member_infos(player_id, self.app_id)
+        clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
+
+        player_details = {
+            'name': player_name,
+            'id': player_id,
+            'creation_timestamp': creation_timestamp,
+            'last_battle_timestamp': last_battle_timestamp,
+            'logout_timestamp': logout_timestamp,
+            'clan': False,
+        }
+        if clan_infos:
+            player_details.update({
+                'clan': True,
+                'clan_id': clan_id,
+                'clan_position': clan_position,
+                'clan_name': clan_infos['name'],
+                'clan_tag': clan_infos['tag'],
+                'clan_emblem_url': clan_infos['emblem_url'],
+            })
+        await self.display_profile(context, player, player_details)
+
+    async def display_profile(self, context, player: typing.Union[discord.Member, str], player_details):
+        embed = discord.Embed(color=self.EMBED_COLOR)
+        embed.set_author(
+            name=player_details['name'] + (f" [{player_details['clan_tag']}]" if player_details['clan'] else ""),
+            url=f"https://worldoftanks.eu/fr/community/accounts/{player_details['id']}/",
+            icon_url=player.avatar_url if isinstance(player, discord.Member) else '')
+        embed.add_field(name="Identifiant", value=player_details['id'])
+        embed.add_field(
+            name="Création du compte",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
+        )
+        embed.add_field(
+            name="Dernière bataille",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
+        )
+        embed.add_field(
+            name="Dernière connexion",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
+        )
+        if player_details['clan']:
+            embed.add_field(name="Clan", value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']}/)", inline=False)
+            embed.add_field(name="Position", value=player_details['clan_position'], inline=False)
+            embed.set_thumbnail(url=player_details['clan_emblem_url'])
+        await context.send(embed=embed)
+
+    @commands.command(
+        name='clan',
+        aliases=[],
+        usage="[<clan_tag|clan_name|player_name>]",
+        ignore_extra=False,
+    )
+    @commands.guild_only()
+    @commands.check(checks.has_any_user_role)
+    async def clan(self, context, clan_search_field: typing.Union[discord.Member, str] = None):
+        clan_id = None
+        if not clan_search_field or isinstance(clan_search_field, discord.Member):
+            _, player_name = await utils.parse_player(context, clan_search_field)
+            player_id, _ = await Stats.get_player_id(player_name, self.app_id)
+            if not player_id:
+                raise exceptions.UnknowPlayer(player_name)
+            _, _, _, clan_id = await Stats.get_player_info(player_id, self.app_id)
+            if not clan_id:
+                raise exceptions.MissingClan(player_name)
+        elif isinstance(clan_search_field, str):
+            # Remove clan tag delimiters if any
+            replacements = {(re.escape(char)): "" for char in ['[', ']', '(', ')']}
+            pattern = re.compile("|".join(replacements.keys()))
+            clan_search_field = pattern.sub(lambda m: replacements[re.escape(m.group(0))], clan_search_field)
+            clan_id = await Stats.get_clan_id(clan_search_field, self.app_id)
+            if not clan_id:
+                raise exceptions.UnknowClan(clan_search_field)
+
+        clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
+        clan_contact = await Stats.get_clan_contact(clan_id, context.guild.members, self.app_id)
+
+        clan_details = {'id': clan_id}
+        clan_details.update(clan_infos)
+        clan_details['contact'] = clan_contact
+        await self.display_clan(context, clan_details)
+
+    async def display_clan(self, context, clan_details):
+        embed = discord.Embed(
+            color=clan_details['color'] if clan_details['color'] else self.EMBED_COLOR
+        )
+        embed.set_author(
+            name=f"[{clan_details['tag']}] {clan_details['name']}",
+            url=f"https://eu.wargaming.net/clans/wot/{clan_details['id']}/",
+            icon_url=clan_details['emblem_url'] if clan_details['emblem_url'] else None
+        )
+        embed.add_field(name="Identifiant", value=clan_details['id'], inline=True)
+        embed.add_field(
+            name="Commandant",
+            value=f"[{clan_details['leader_name']}](https://worldoftanks.eu/fr/community/accounts/{clan_details['leader_id']}/)",
+            inline=True)
+        embed.add_field(
+            name="Création du clan",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp'])),
+            inline=True
+        )
+        embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres", inline=True)
+        embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées", inline=True)
+        embed.add_field(name="Contact de clan", value=clan_details['contact'].mention if clan_details['contact'] else "Aucun", inline=True)
+        embed.set_thumbnail(url=clan_details['emblem_url'])
         await context.send(embed=embed)
 
     @staticmethod
@@ -260,68 +384,6 @@ class Stats(command.Command):
             wn8 += 145 * min(1.8, r_win_c)
         return wn8
 
-    @commands.command(
-        name='profile',
-        aliases=['profil'],
-        usage="<joueur>",
-        ignore_extra=False,
-    )
-    @commands.guild_only()
-    @commands.check(checks.has_any_user_role)
-    async def profile(self, context, player: typing.Union[discord.Member, str] = None):
-        player, player_name = await utils.parse_player(context, player)
-        player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
-        if not player_id:
-            raise exceptions.UnknowPlayer(player_name)
-        creation_timestamp, last_battle_timestamp, logout_timestamp, clan_id = await Stats.get_player_info(player_id, self.app_id)
-        clan_position = await Stats.get_clan_member_infos(player_id, self.app_id)
-        clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
-
-        player_details = {
-            'player_name': player_name,
-            'player_id': player_id,
-            'creation_timestamp': creation_timestamp,
-            'last_battle_timestamp': last_battle_timestamp,
-            'logout_timestamp': logout_timestamp,
-            'clan': False,
-        }
-        if clan_infos:
-            player_details.update({
-                'clan': True,
-                'clan_id': clan_id,
-                'clan_position': clan_position,
-                'clan_name': clan_infos['name'],
-                'clan_tag': clan_infos['tag'],
-                'clan_emblem_url': clan_infos['emblem_url'],
-            })
-        await self.display_profile(context, player, player_details)
-
-    async def display_profile(self, context, player: typing.Union[discord.Member, str], player_details):
-        clan_tag = ""
-        embed = discord.Embed()
-        embed.set_author(
-            name=player_details['player_name'] + (f" [{player_details['clan_tag']}]" if player_details['clan'] else ""),
-            url=f"https://worldoftanks.eu/fr/community/accounts/{player_details['player_id']}/",
-            icon_url=player.avatar_url if isinstance(player, discord.Member) else '')
-        embed.add_field(name="Identifiant", value=player_details['player_id'])
-        embed.add_field(
-            name="Création du compte",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
-        )
-        embed.add_field(
-            name="Dernière bataille",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
-        )
-        embed.add_field(
-            name="Dernière connexion",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
-        )
-        if player_details['clan']:
-            embed.add_field(name="Clan", value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']}/)", inline=False)
-            embed.add_field(name="Position", value=player_details['clan_position'], inline=False)
-            embed.set_thumbnail(url=player_details['clan_emblem_url'])
-        await context.send(embed=embed)
-
     @staticmethod
     async def get_player_info(player_id, app_id) -> (int, int, int, str) or None:
         """Retrieve the stats totals of a player."""
@@ -345,11 +407,27 @@ class Stats(command.Command):
                     player_data['created_at'],
                     player_data['last_battle_time'],
                     player_data['logout_at'],
-                    str(player_data['clan_id'])
+                    str(player_data['clan_id']) if player_data['clan_id'] else None
                 )
 
     @staticmethod
-    async def get_clan_member_infos(player_id, app_id) -> (str or None):
+    async def get_clan_id(clan_search_field, app_id) -> str or None:
+        """Retrieve clan id of a clan."""
+        payload = {
+            'application_id': app_id,
+            'search': clan_search_field,
+            'fields': ','.join(['clan_id']),
+        }
+        response = requests.get('https://api.worldoftanks.eu/wot/clans/list/', params=payload)
+        response_content = response.json()
+
+        if response_content['status'] == 'ok':
+            clan_data = response_content['data']
+            if clan_data:
+                return str(clan_data[0]['clan_id'])
+
+    @staticmethod
+    async def get_clan_member_infos(player_id, app_id) -> str or None:
         """Retrieve clan-specific infos of a clan member."""
         payload = {
             'application_id': app_id,
@@ -366,30 +444,67 @@ class Stats(command.Command):
                 return player_data['role_i18n']
 
     @staticmethod
-    async def get_clan_infos(clan_id, app_id) -> dict:
+    async def get_clan_infos(clan_id, app_id) -> dict or None:
         """Retrieve the stats totals of a player."""
         payload = {
             'application_id': app_id,
             'clan_id': clan_id,
             'fields': ','.join([
-                'tag',
                 'name',
+                'tag',
+                'created_at',
+                'motto',
+                'color',
                 'emblems',
+                'accepts_join_requests',
+                'leader_id',
+                'leader_name',
+                'members_count',
             ]),
         }
         response = requests.get('https://api.worldoftanks.eu/wot/clans/info/', params=payload)
         response_content = response.json()
 
-        clan_infos = {}
         if response_content['status'] == 'ok':
             clan_data = response_content['data'][clan_id]
             if clan_data:
-                clan_infos['name'] = clan_data['name']
-                clan_infos['tag'] = clan_data['tag']
                 filtered_emblems = {resolution: data for resolution, data in clan_data['emblems'].items() if 'wot' in data}
                 largest_emblem_data = sorted(filtered_emblems.items(), reverse=True, key=lambda x: int(x[0][1:]))[0]
-                clan_infos['emblem_url'] = largest_emblem_data[1]['wot']
-        return clan_infos
+                clan_infos = {
+                    'name': clan_data['name'],
+                    'tag': clan_data['tag'],
+                    'creation_timestamp': clan_data['created_at'],
+                    'motto': clan_data['motto'],
+                    'color': int(clan_data['color'].replace('#', ''), 16) if clan_data['color'] else None,
+                    'emblem_url': largest_emblem_data[1]['wot'],
+                    'recruiting': bool(clan_data['accepts_join_requests']),
+                    'leader_id': str(clan_data['leader_id']),
+                    'leader_name': clan_data['leader_name'],
+                    'members_count': clan_data['members_count'],
+                }
+                return clan_infos
+
+    @staticmethod
+    async def get_clan_contact(clan_id, guild_members, app_id) -> discord.Member or None:
+        """Retrieve the stats totals of a player."""
+        payload = {
+            'application_id': app_id,
+            'clan_id': clan_id,
+            'fields': ','.join([
+                'members.account_name',
+            ]),
+        }
+        response = requests.get('https://api.worldoftanks.eu/wot/clans/info/', params=payload)
+        response_content = response.json()
+
+        if response_content['status'] == 'ok':
+            clan_data = response_content['data'][clan_id]
+            if clan_data:
+                for clan_member_name in [player_data['account_name'] for player_data in clan_data['members']]:
+                    for guild_member in guild_members:
+                        guild_member_name = (guild_member.nick if guild_member.nick else guild_member.display_name).split(' ')[0]
+                        if clan_member_name == guild_member_name and discord.utils.get(guild_member.roles, name=Stats.CLAN_CONTACT_ROLE_NAME):
+                            return guild_member
 
 
 def setup(bot):

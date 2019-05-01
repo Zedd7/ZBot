@@ -43,3 +43,8 @@ class UnknowPlayer(commands.CommandError):
 class UnknowClan(commands.CommandError):
     def __init__(self, unknown_clan_name):
         self.unknown_clan_name = unknown_clan_name
+
+
+class MissingClan(commands.CommandError):
+    def __init__(self, player_name):
+        self.player_name = player_name

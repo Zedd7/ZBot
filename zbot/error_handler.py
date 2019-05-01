@@ -42,6 +42,8 @@ async def handle(context, error):
         await context.send(f"Joueur WoT inconnu: `{error.unknown_player_name}`")
     elif isinstance(error, exceptions.UnknowClan):
         await context.send(f"Clan WoT inconnu: `{error.unknown_clan_name}`")
+    elif isinstance(error, exceptions.MissingClan):
+        await context.send(f"Aucun clan WoT trouvé pour le joueur: `{error.player_name}`")
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
