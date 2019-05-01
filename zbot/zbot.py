@@ -10,7 +10,7 @@ from . import database
 from . import error_handler
 from . import scheduler
 
-__version__ = '1.1.3'
+__version__ = '1.1.4'
 
 COGS = [
     'zbot.cogs.config',
@@ -29,6 +29,8 @@ bot = commands.Bot(
     owner_id=156837349966217216,
     case_insensitive=True
 )
+
+db = database.MongoDBDonnector()
 
 
 @bot.event
@@ -51,7 +53,6 @@ async def on_command_error(context: commands.Context, error: commands.CommandErr
 
 def run():
     dotenv.load_dotenv()
-    db = database.MongoDBDonnector()
     db.open_connection()
     scheduler.setup(db)
     bot_token = os.getenv('BOT_TOKEN')

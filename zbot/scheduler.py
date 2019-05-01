@@ -19,17 +19,20 @@ def setup(db: database.MongoDBDonnector):
         jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
+    print(f"Loaded {len(scheduler.get_jobs())} job(s).")
+    scheduler.print_jobs()
 
 
-def schedule(timestamp, callback, args, collection_name):
+def schedule_lottery(timestamp, callback, args):
     job_trigger = DateTrigger(run_date=timestamp)
     job = scheduler.add_job(
         func=callback,
         trigger=job_trigger,
         args=args,
-        jobstore=collection_name,
+        jobstore='lottery',
         misfire_grace_time=MISFIRE_GRACE_TIME,
         coalesce=False,
         replace_existing=True
     )
     print(f"Scheduled new job : {job}")
+    return job

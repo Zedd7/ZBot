@@ -24,7 +24,7 @@ class MongoDBDonnector:
         try:
             password = os.getenv('MONGODB_PASSWORD')
             if not password:
-                raise ConnectionFailure("Not MongoDB password found in .env file under the key 'MONGODB_PASSWORD'.")
+                raise ConnectionFailure("No MongoDB password found in .env file under the key 'MONGODB_PASSWORD'.")
 
             self.client = pymongo.MongoClient(f'mongodb+srv://{self.USER_NAME}:{password}@zbot-5waud.gcp.mongodb.net/test?retryWrites=true')
             self.client.admin.command('ismaster')  # Check if connected
@@ -41,3 +41,13 @@ class MongoDBDonnector:
             traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
 
         return self.connected
+
+    def update_lottery(self, job_id, data):
+        self.database['lottery'].update_one({'_id': job_id}, {'$set': data})
+
+    def load_pending_lotteries(self, pending_lotteries):
+        for pending_lottery in self.database['lottery'].find({}, {'_id': 1, 'message_id': 1, 'emoji': 1}):
+            job_id = pending_lottery['_id']
+            message_id = pending_lottery['message_id']
+            emoji = pending_lottery['emoji']
+            pending_lotteries[message_id] = {'emoji': emoji, 'job_id': job_id}

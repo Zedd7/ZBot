@@ -29,7 +29,7 @@ async def handle(context, error):
     elif isinstance(error, exceptions.MissingUser):
         await context.send(f"Utilisateur Discord inconnu: `{error.missing_user_name}`")
     elif isinstance(error, exceptions.MissingRoles):
-        await context.send(f"Rôles requis: {', '.join([f'@{r}' for r in error.missing_roles])}")
+        await context.send(f"Rôle(s) requis: {', '.join([f'@{r}' for r in error.missing_roles])}")
     elif isinstance(error, exceptions.MissingMessage):
         await context.send(f"Aucun message trouvé pour l'id: `{error.missing_message_id}`")
     elif isinstance(error, exceptions.MissingEmoji):

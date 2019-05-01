@@ -15,6 +15,7 @@ from zbot import error_handler
 from zbot import exceptions
 from zbot import scheduler
 from zbot import utils
+from zbot import zbot
 from . import command
 
 
@@ -30,6 +31,7 @@ class Lottery(command.Command):
 
     def __init__(self, bot):
         super(Lottery, self).__init__(bot)
+        zbot.db.load_pending_lotteries(self.pending_lotteries)
 
     @commands.group(
         name=MAIN_COMMAND_NAME,
@@ -71,9 +73,10 @@ class Lottery(command.Command):
         message = await utils.make_announce(context, dest_channel, self.ANNOUNCE_ROLE_NAME, announce, embed)
         await message.add_reaction(emoji)
 
-        Lottery.pending_lotteries[message.id] = emoji
         args = [dest_channel.id, message.id, emoji if isinstance(emoji, str) else emoji.id, nb_winners, organizer.id]
-        scheduler.schedule(timestamp, Lottery.setup_callback, args, 'lottery')
+        job_id = scheduler.schedule_lottery(timestamp, self.setup_callback, args).id
+        zbot.db.update_lottery(job_id, {'message_id': message.id, 'emoji': emoji})
+        self.pending_lotteries[message.id] = {'emoji': emoji, 'job_id': job_id}
 
     @staticmethod
     async def setup_callback(channel_id, message_id, emoji_code, nb_winners, organizer_id):
@@ -191,7 +194,8 @@ class Lottery(command.Command):
         message = reaction.message
         message_id = message.id
         emoji = reaction.emoji
-        if message_id in Lottery.pending_lotteries and emoji == Lottery.pending_lotteries[message_id] \
+        if message_id in Lottery.pending_lotteries \
+                and emoji == Lottery.pending_lotteries[message_id]['emoji'] \
                 and not await checks.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
             try:
                 await user.send(f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
