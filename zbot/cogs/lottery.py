@@ -157,7 +157,7 @@ class Lottery(command.Command):
     async def announce_winners(winners, players, organizer=None, message=None):
         embed = discord.Embed(
             title="Résultat du tirage au sort :tada:",
-            description=f"Gagnant(s) parmi {len(players)} participant(s):\n" + await utils.get_user_list(winners, "\n"),
+            description=f"Gagnant(s) parmi {len(players)} participant(s):\n" + await utils.make_user_list(winners, "\n"),
             color=Lottery.EMBED_COLOR
         )
         if organizer:
@@ -177,13 +177,13 @@ class Lottery(command.Command):
                         traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
                     unreachable_winners.append(winner)
             # DM organizer
-            winner_list = await utils.get_user_list(winners)
+            winner_list = await utils.make_user_list(winners)
             await organizer.send(f"Les gagnants de la loterie sont: {winner_list}")
             if unreachable_winners:
-                unreachable_winner_list = await utils.get_user_list(unreachable_winners)
+                unreachable_winner_list = await utils.make_user_list(unreachable_winners)
                 await organizer.send(f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
             # Log winners
-            winner_list = await utils.get_user_list(winners, mention=False)
+            winner_list = await utils.make_user_list(winners, mention=False)
             print(f"Winners : {winner_list}")
 
     @commands.Cog.listener()

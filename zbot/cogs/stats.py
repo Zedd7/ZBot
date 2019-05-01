@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-import json
+import datetime
 import os
 import typing
 from pathlib import Path
@@ -11,7 +11,9 @@ import requests
 from discord.ext import commands
 
 from zbot import checks
+from zbot import converters
 from zbot import exceptions
+from zbot import utils
 from . import command
 
 
@@ -33,45 +35,11 @@ class Stats(command.Command):
         2900: 0x5A3175,     # dark purple
     }
 
-    # common fields
-    ACCOUNT_SEARCH_REQUEST_URL = 'https://api.worldoftanks.eu/wot/account/list/'
-
-    # +stats fields
-    ACCOUNT_INFO_REQUEST_URL = 'https://api.worldoftanks.eu/wot/account/info/'
-    ACCOUNT_INFO_FIELD_LIST = [
-        'clan_id',
-        'global_rating',
-        'statistics.all.battles',
-        'statistics.all.battle_avg_xp',
-        'statistics.all.damage_dealt',
-        'statistics.all.spotted',
-        'statistics.all.frags',
-        'statistics.all.dropped_capture_points',
-        'statistics.all.wins',
-    ]
-    ACCOUNT_TANKS_REQUEST_URL = 'https://api.worldoftanks.eu/wot/account/tanks/'
-    ACCOUNT_TANKS_FIELD_LIST = [
-        'tank_id',
-        'statistics.battles',
-    ]
-    TANK_STATS_REQUEST_URL = 'https://api.worldoftanks.eu/wot/tanks/stats/'
-    TANK_STATS_FIELD_LIST = [
-        'all.damage_dealt',
-        'all.spotted',
-        'all.frags',
-        'all.dropped_capture_points',
-        'all.wins',
-    ]
-    TANK_INFO_REQUEST_URL = 'https://api.worldoftanks.eu/wot/encyclopedia/vehicles/'
-    TANK_INFO_FIELD_LIST = [
-        'tier',
-    ]
-
     def __init__(self, bot):
         super(Stats, self).__init__(bot)
         dotenv.load_dotenv()
         self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'
-        self.exp_values = Stats.get_exp_values()
+        self.exp_values = utils.get_exp_values(Stats.EXP_VALUES_FILE_PATH, Stats.EXP_VALUES_FILE_URL)
 
     @commands.command(
         name='stats',
@@ -82,22 +50,7 @@ class Stats(command.Command):
     @commands.guild_only()
     @commands.check(checks.has_any_user_role)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
-        # Try to cast player name as Discord guild member
-        if not player:
-            player = context.guild.get_member(context.author.id)
-        elif not isinstance(player, discord.Member):
-            player = context.guild.get_member_named(player) or player
-
-        # Parse Wot account name
-        if isinstance(player, discord.Member):
-            if player.nick:  # Use nickname if set
-                player_name = player.nick.split(' ')[0]  # Remove clan tag
-            else:            # Else use username
-                player_name = player.display_name.split(' ')[0]  # Remove clan tag
-        else:
-            player_name = player
-
-        # Collect player details
+        player, player_name = await utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:
             raise exceptions.UnknowPlayer(player_name)
@@ -120,9 +73,7 @@ class Stats(command.Command):
 
     async def display_stats(self, context, player: typing.Union[discord.Member, str], player_details):
         embed_color = [color for wn8, color in sorted(self.WN8_COLORS.items()) if player_details['wn8'] >= wn8][-1]
-        embed = discord.Embed(
-            color=embed_color,
-        )
+        embed = discord.Embed(color=embed_color)
         embed.set_author(
             name=player_details['player_name'],
             url=f"https://fr.wot-life.com/eu/player/{player_details['player_name']}/",
@@ -130,36 +81,11 @@ class Stats(command.Command):
         )
         embed.add_field(name="Batailles", value=f"{player_details['battles']: .0f}", inline=True)
         embed.add_field(name="Tier moyen", value=f"{player_details['average_tier']: .2f}", inline=True)
-        embed.add_field(name="Expérience moyenne", value=f"{player_details['average_xp']: .0f} xp", inline=True)
+        embed.add_field(name="Expérience moyenne", value=f"{player_details['average_xp']: .1f}", inline=True)
         embed.add_field(name="Taux de victoires", value=f"{player_details['win_ratio']: .2f} %", inline=True)
         embed.add_field(name="WN8", value=f"{player_details['wn8']: .0f}", inline=True)
         embed.add_field(name="Cote personnelle", value=f"{player_details['rating']: .0f}", inline=True)
         await context.send(embed=embed)
-
-    @staticmethod
-    def get_exp_values():
-        """Download or load the last version of WN8 expected values."""
-        Stats.EXP_VALUES_FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        if not Stats.EXP_VALUES_FILE_PATH.exists():  # TODO update if too old (check header in json)
-            response = requests.get(Stats.EXP_VALUES_FILE_URL)
-            with Stats.EXP_VALUES_FILE_PATH.open(mode='w') as exp_values_file:
-                exp_values_file.write(response.text)
-                exp_values_json = response.json()
-        else:
-            with Stats.EXP_VALUES_FILE_PATH.open(mode='r') as exp_values_file:
-                exp_values_json = json.load(exp_values_file)
-
-        exp_values = {}
-        if exp_values_json:
-            for tank_data in exp_values_json['data']:
-                exp_values[tank_data['IDNum']] = {
-                    'damage_ratio': tank_data['expDamage'],
-                    'spot_ratio': tank_data['expSpot'],
-                    'kill_ratio': tank_data['expFrag'],
-                    'defense_ratio': tank_data['expDef'],
-                    'win_ratio': tank_data['expWinRate'],
-                }
-        return exp_values
 
     @staticmethod
     async def get_player_id(player_name, app_id) -> (str, str) or (None, None):
@@ -169,7 +95,7 @@ class Stats(command.Command):
             'search': player_name,
             'type': 'exact',
         }
-        response = requests.get(Stats.ACCOUNT_SEARCH_REQUEST_URL, params=payload)
+        response = requests.get('https://api.worldoftanks.eu/wot/account/list/', params=payload)
         response_content = response.json()
 
         player_id, player_name = (None,) * 2
@@ -177,7 +103,7 @@ class Stats(command.Command):
             player_data = response_content['data']
             if player_data:
                 player_id = str(player_data[0]['account_id'])
-                player_name = player_data[0]['nickname']
+                player_name = player_data[0]['nickname']  # Fix player name case
         return player_id, player_name
 
     @staticmethod
@@ -186,9 +112,18 @@ class Stats(command.Command):
         payload = {
             'application_id': app_id,
             'account_id': player_id,
-            'fields': ','.join(Stats.ACCOUNT_INFO_FIELD_LIST),
+            'fields': ','.join([
+                'global_rating',
+                'statistics.all.battles',
+                'statistics.all.battle_avg_xp',
+                'statistics.all.damage_dealt',
+                'statistics.all.spotted',
+                'statistics.all.frags',
+                'statistics.all.dropped_capture_points',
+                'statistics.all.wins',
+            ]),
         }
-        response = requests.get(Stats.ACCOUNT_INFO_REQUEST_URL, params=payload)
+        response = requests.get('https://api.worldoftanks.eu/wot/account/info/', params=payload)
         response_content = response.json()
 
         if response_content['status'] == 'ok':
@@ -212,9 +147,12 @@ class Stats(command.Command):
         payload = {
             'application_id': app_id,
             'account_id': player_id,
-            'fields': ','.join(Stats.ACCOUNT_TANKS_FIELD_LIST),
+            'fields': ','.join([
+                'tank_id',
+                'statistics.battles',
+            ]),
         }
-        response = requests.get(Stats.ACCOUNT_TANKS_REQUEST_URL, params=payload)
+        response = requests.get('https://api.worldoftanks.eu/wot/account/tanks/', params=payload)
         response_content = response.json()
 
         if response_content['status'] == 'ok':
@@ -245,10 +183,16 @@ class Stats(command.Command):
             payload = {
                 'application_id': app_id,
                 'account_id': player_id,
-                'fields': ','.join(Stats.TANK_STATS_FIELD_LIST),
+                'fields': ','.join([
+                    'all.damage_dealt',
+                    'all.spotted',
+                    'all.frags',
+                    'all.dropped_capture_points',
+                    'all.wins',
+                ]),
                 'tank_id': ','.join(missing_tanks),
             }
-            response = requests.get(Stats.TANK_STATS_REQUEST_URL, params=payload)
+            response = requests.get('https://api.worldoftanks.eu/wot/tanks/stats/', params=payload)
             response_content = response.json()
 
             if response_content['status'] == 'ok':
@@ -269,9 +213,9 @@ class Stats(command.Command):
         if tank_stats:
             payload = {
                 'application_id': app_id,
-                'fields': ','.join(Stats.TANK_INFO_FIELD_LIST),
+                'fields': ','.join(['tier']),
             }
-            response = requests.get(Stats.TANK_INFO_REQUEST_URL, params=payload)
+            response = requests.get('https://api.worldoftanks.eu/wot/encyclopedia/vehicles/', params=payload)
             response_content = response.json()
 
             if response_content['status'] == 'ok':
@@ -279,10 +223,11 @@ class Stats(command.Command):
                 if tank_data:
                     total_battles, weighted_sum = 0, 0
                     for tank_id in tank_stats:
-                        tier = tank_data[tank_id]['tier']
-                        battles = tank_stats[tank_id]['battles']
-                        total_battles += battles
-                        weighted_sum += tier * battles
+                        if tank_id in tank_data:
+                            tier = tank_data[tank_id]['tier']
+                            battles = tank_stats[tank_id]['battles']
+                            total_battles += battles
+                            weighted_sum += tier * battles
                     average_tier = weighted_sum / total_battles
                     return average_tier
         return 0
@@ -314,6 +259,137 @@ class Stats(command.Command):
             wn8 += 75 * r_def_c * r_kill_c
             wn8 += 145 * min(1.8, r_win_c)
         return wn8
+
+    @commands.command(
+        name='profile',
+        aliases=['profil'],
+        usage="<joueur>",
+        ignore_extra=False,
+    )
+    @commands.guild_only()
+    @commands.check(checks.has_any_user_role)
+    async def profile(self, context, player: typing.Union[discord.Member, str] = None):
+        player, player_name = await utils.parse_player(context, player)
+        player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
+        if not player_id:
+            raise exceptions.UnknowPlayer(player_name)
+        creation_timestamp, last_battle_timestamp, logout_timestamp, clan_id = await Stats.get_player_info(player_id, self.app_id)
+        clan_position = await Stats.get_clan_member_infos(player_id, self.app_id)
+        clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
+
+        player_details = {
+            'player_name': player_name,
+            'player_id': player_id,
+            'creation_timestamp': creation_timestamp,
+            'last_battle_timestamp': last_battle_timestamp,
+            'logout_timestamp': logout_timestamp,
+            'clan': False,
+        }
+        if clan_infos:
+            player_details.update({
+                'clan': True,
+                'clan_id': clan_id,
+                'clan_position': clan_position,
+                'clan_name': clan_infos['name'],
+                'clan_tag': clan_infos['tag'],
+                'clan_emblem_url': clan_infos['emblem_url'],
+            })
+        await self.display_profile(context, player, player_details)
+
+    async def display_profile(self, context, player: typing.Union[discord.Member, str], player_details):
+        clan_tag = ""
+        embed = discord.Embed()
+        embed.set_author(
+            name=player_details['player_name'] + (f" [{player_details['clan_tag']}]" if player_details['clan'] else ""),
+            url=f"https://worldoftanks.eu/fr/community/accounts/{player_details['player_id']}/",
+            icon_url=player.avatar_url if isinstance(player, discord.Member) else '')
+        embed.add_field(name="Identifiant", value=player_details['player_id'])
+        embed.add_field(
+            name="Création du compte",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
+        )
+        embed.add_field(
+            name="Dernière bataille",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
+        )
+        embed.add_field(
+            name="Dernière connexion",
+            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
+        )
+        if player_details['clan']:
+            embed.add_field(name="Clan", value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']}/)", inline=False)
+            embed.add_field(name="Position", value=player_details['clan_position'], inline=False)
+            embed.set_thumbnail(url=player_details['clan_emblem_url'])
+        await context.send(embed=embed)
+
+    @staticmethod
+    async def get_player_info(player_id, app_id) -> (int, int, int, str) or None:
+        """Retrieve the stats totals of a player."""
+        payload = {
+            'application_id': app_id,
+            'account_id': player_id,
+            'fields': ','.join([
+                'created_at',
+                'last_battle_time',
+                'logout_at',
+                'clan_id',
+            ]),
+        }
+        response = requests.get('https://api.worldoftanks.eu/wot/account/info/', params=payload)
+        response_content = response.json()
+
+        if response_content['status'] == 'ok':
+            player_data = response_content['data'][player_id]
+            if player_data:
+                return (
+                    player_data['created_at'],
+                    player_data['last_battle_time'],
+                    player_data['logout_at'],
+                    str(player_data['clan_id'])
+                )
+
+    @staticmethod
+    async def get_clan_member_infos(player_id, app_id) -> (str or None):
+        """Retrieve clan-specific infos of a clan member."""
+        payload = {
+            'application_id': app_id,
+            'account_id': player_id,
+            'language': 'fr',
+            'fields': ','.join(['role_i18n']),
+        }
+        response = requests.get('https://api.worldoftanks.eu/wot/clans/accountinfo/', params=payload)
+        response_content = response.json()
+
+        if response_content['status'] == 'ok':
+            player_data = response_content['data'][player_id]
+            if player_data:
+                return player_data['role_i18n']
+
+    @staticmethod
+    async def get_clan_infos(clan_id, app_id) -> dict:
+        """Retrieve the stats totals of a player."""
+        payload = {
+            'application_id': app_id,
+            'clan_id': clan_id,
+            'fields': ','.join([
+                'tag',
+                'name',
+                'emblems',
+            ]),
+        }
+        response = requests.get('https://api.worldoftanks.eu/wot/clans/info/', params=payload)
+        response_content = response.json()
+
+        clan_infos = {}
+        if response_content['status'] == 'ok':
+            clan_data = response_content['data'][clan_id]
+            if clan_data:
+                clan_infos['name'] = clan_data['name']
+                clan_infos['tag'] = clan_data['tag']
+                filtered_emblems = {resolution: data for resolution, data in clan_data['emblems'].items() if 'wot' in data}
+                largest_emblem_data = sorted(filtered_emblems.items(), reverse=True, key=lambda x: int(x[0][1:]))[0]
+                clan_infos['emblem_url'] = largest_emblem_data[1]['wot']
+        return clan_infos
 
 
 def setup(bot):

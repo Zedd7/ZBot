@@ -10,7 +10,7 @@ from . import database
 from . import error_handler
 from . import scheduler
 
-__version__ = '1.1.1'
+__version__ = '1.1.2'
 
 COGS = [
     'zbot.cogs.config',

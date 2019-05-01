@@ -7,4 +7,4 @@ The root directory must also contain a `.env` file used to store private keys. \
 The required keys are the following : `BOT_TOKEN`, `MONGODB_PASSWORD`, `WG_API_APPLICATION_ID`.
 
 If ran on Repl.it or similar host where idle processes are likely to be killed, a < 60 min automatic ping must be scheduled to keep the Flask server alive.
-Used of [UptimeRobot](https://uptimerobot.com/) is recommended.
+Use of [UptimeRobot](https://uptimerobot.com/) is recommended.
