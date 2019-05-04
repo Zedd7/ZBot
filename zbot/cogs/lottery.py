@@ -7,6 +7,7 @@ import traceback
 import typing
 
 import discord
+import emojis
 from discord.ext import commands
 
 from zbot import checks
@@ -45,7 +46,7 @@ class Lottery(command.Command):
     @lottery.command(
         name='setup',
         aliases=['s', 'set', 'plan'],
-        usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <timestamp>",
+        usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <timestamp> [--no-announce]",
         ignore_extra=False
     )
     @commands.check(checks.has_any_mod_role)
@@ -54,11 +55,14 @@ class Lottery(command.Command):
                     emoji: typing.Union[discord.Emoji, str],
                     nb_winners: int,
                     dest_channel: discord.TextChannel,
-                    timestamp: converters.to_datetime):
-        if not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+                    timestamp: converters.to_datetime,
+                    *, options=None):
+        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
+            raise exceptions.ForbiddenEmoji(emoji)
         if nb_winners < 1:
             raise exceptions.UndersizedArgument(nb_winners, 1)
+        if not context.author.permissions_in(dest_channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
         if (timestamp - await utils.get_current_time()).total_seconds() <= 0:
             argument_size = converters.humanize_datetime(timestamp)
             min_argument_size = converters.humanize_datetime(await utils.get_current_time())
@@ -70,12 +74,13 @@ class Lottery(command.Command):
             color=self.EMBED_COLOR
         )
         embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
-        message = await utils.make_announce(context, dest_channel, self.ANNOUNCE_ROLE_NAME, announce, embed)
+        do_announce = '--no-announce' not in options if options else True
+        message = await utils.make_announce(context, dest_channel, self.ANNOUNCE_ROLE_NAME, announce, embed, do_announce)
         await message.add_reaction(emoji)
 
         args = [dest_channel.id, message.id, emoji if isinstance(emoji, str) else emoji.id, nb_winners, organizer.id]
         job_id = scheduler.schedule_lottery(timestamp, self.setup_callback, args).id
-        zbot.db.update_lottery(job_id, {'message_id': message.id, 'emoji': emoji})
+        zbot.db.update_lottery(job_id, {'message_id': message.id, 'emoji': emoji if isinstance(emoji, str) else emoji.id})
         self.pending_lotteries[message.id] = {'emoji': emoji, 'job_id': job_id}
 
     @staticmethod
@@ -119,15 +124,15 @@ class Lottery(command.Command):
                    organizer: discord.User = None,
                    seed: int = None):
 
-        if not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
+            raise exceptions.ForbiddenEmoji(emoji)
         if nb_winners < 1:
             raise exceptions.UndersizedArgument(nb_winners, 1)
+        if not context.author.permissions_in(dest_channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
 
         message, players, reaction, winners = await Lottery.draw(src_channel, emoji, message_id, nb_winners, seed)
-        announce_message = await context.send(
-            discord.utils.escape_mentions(f"Tirage au sort sur base de la réaction {emoji} à :\n{message.content}")
-        )
+        announce_message = await context.send(f"Tirage au sort sur base de la réaction {emoji} au message \"`{message.content}`\"")
         await Lottery.announce_winners(winners, players, organizer, announce_message)
 
     @staticmethod
@@ -173,7 +178,7 @@ class Lottery(command.Command):
             for winner in winners:
                 try:
                     await winner.send(
-                        f"Félicitations ! Tu as été tiré au sort lors de la loterie organisée par {organizer.mention} !\n"
+                        f"Félicitations ! Tu as été tiré au sort lors de la loterie organisée par {organizer.display_name} ({organizer.mention}) !\n"
                         f"Contacte cette personne par MP pour obtenir ta récompense :wink:")
                 except discord.errors.HTTPException as error:
                     if error.status != http.HTTPStatus.FORBIDDEN:  # DMs blocked by user
@@ -185,8 +190,10 @@ class Lottery(command.Command):
             if unreachable_winners:
                 unreachable_winner_list = await utils.make_user_list(unreachable_winners)
                 await organizer.send(f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
-            # Log winners
+            # Log players
+            player_list = await utils.make_user_list(players, mention=False)
             winner_list = await utils.make_user_list(winners, mention=False)
+            print(f"Players : {player_list}")
             print(f"Winners : {winner_list}")
 
     @commands.Cog.listener()

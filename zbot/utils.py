@@ -105,10 +105,13 @@ async def make_user_list(users, mention=True, separator=", "):
     return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
 
 
-async def make_announce(context, channel: discord.TextChannel, announce_role_name: str, announce: str, embed: discord.Embed = False):
-    announce_role = discord.utils.find(lambda role: role.name == announce_role_name, context.guild.roles)
-    content = f"{announce_role.mention + ' ' if announce_role is not None else ''}{announce}"
-    return await channel.send(content=content, embed=embed)
+async def make_announce(context, channel: discord.TextChannel, announce_role_name: str, announce: str, embed: discord.Embed = False, mention_announce_role=True):
+    if mention_announce_role:
+        announce_role = discord.utils.find(lambda role: role.name == announce_role_name, context.guild.roles)
+        content = f"{announce_role.mention + ' ' if announce_role is not None else ''}{announce}"
+        return await channel.send(content=content, embed=embed)
+    else:
+        return await channel.send(content=announce, embed=embed)
 
 
 # Miscellaneous

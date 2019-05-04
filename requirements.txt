@@ -2,6 +2,7 @@ apscheduler
 asyncio
 dnspython
 discord.py >= 1.0.1
+emojis
 flask
 pymongo
 python-dateutil
