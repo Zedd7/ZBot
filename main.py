@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import keep_alive
 import zbot.zbot as bot
 

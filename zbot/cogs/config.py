@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import sys
 
 from discord.ext import commands
 
-from zbot import checks
+from zbot import checker
+from zbot import logger
 from . import command
 
 
@@ -32,9 +31,9 @@ class Config(command.Command):
         usage="",
         ignore_extra=False
     )
-    @commands.check(checks.has_any_mod_role)
+    @commands.check(checker.has_any_mod_role)
     async def logout(self, context):
-        print("Logging out...")
+        logger.info("Logging out...")
         await context.send(f"Déconnexion.")
         await self.bot.logout()
         sys.exit()

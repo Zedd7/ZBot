@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import os
-import sys
-import traceback
 
 import pymongo
 from pymongo.errors import ConnectionFailure
+
+from . import logger
 
 
 class MongoDBDonnector:
@@ -28,17 +26,16 @@ class MongoDBDonnector:
 
             self.client = pymongo.MongoClient(f'mongodb+srv://{self.USER_NAME}:{password}@zbot-5waud.gcp.mongodb.net/test?retryWrites=true')
             self.client.admin.command('ismaster')  # Check if connected
-            print(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
+            logger.info(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
             self.connected = True
 
             self.database = self.client[self.DATABASE_NAME]
             for collection_name in self.COLLECTION_NAMES:
                 self.collections[collection_name] = self.database[collection_name]
-            print(f"Loaded {len(self.collections)} collection(s).")
+            logger.info(f"Loaded {len(self.collections)} collection(s).")
 
         except ConnectionFailure as error:
-            print(f"Could not connect to MongoDB database '{self.DATABASE_NAME}'.")
-            traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+            logger.error(f"Could not connect to MongoDB database '{self.DATABASE_NAME}'.", exc_info=True)
 
         return self.connected
 

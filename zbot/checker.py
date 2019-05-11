@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
-
 import discord
 from discord.ext import commands
 
-from zbot import exceptions
+from . import exceptions
+from . import logger
 
 
 async def has_any_mod_role(context, print_error=True):
@@ -26,7 +25,7 @@ async def has_any_guild_role(context, role_names_key, print_error=True):
         elif print_error:
             raise exceptions.MissingRoles(role_names)
     else:
-        print(f"No mod role defined for {context.cog}.")
+        logger.warning(f"No mod role defined for {context.cog}.")
     return False
 
 

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import json
 
@@ -7,6 +5,8 @@ import discord
 import pytz
 import requests
 from discord.ext import commands
+
+from . import logger
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
 
@@ -21,7 +21,7 @@ async def send_usage(context, command_name) -> None:
         prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
         await context.send(f"Syntaxe: `{prefix}{command.qualified_name} {command_usage}`\n")
     else:
-        print(f"No usage defined for {command_name}")
+        logger.warning(f"No usage defined for {command_name}")
 
 
 async def is_subcommand(bot, command_name):
@@ -35,7 +35,7 @@ async def get_command(context, command_name) -> commands.Command or None:
             parent_command = context.bot.all_commands[main_command_name]
             return await get_subcommand(parent_command, command_name)
         else:
-            print(f"No main command defined for {context.cog}.")
+            logger.warning(f"No main command defined for {context.cog}.")
     else:
         return context.bot.all_commands[command_name]
     return None

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from datetime import timedelta
 
 from apscheduler.jobstores.mongodb import MongoDBJobStore
@@ -7,6 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 
 from . import database
+from . import logger
 from . import utils
 
 MISFIRE_GRACE_TIME = int(timedelta(days=1).total_seconds())
@@ -19,8 +18,7 @@ def setup(db: database.MongoDBDonnector):
         jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
-    print(f"Loaded {len(scheduler.get_jobs())} job(s).")
-    scheduler.print_jobs()
+    logger.info(f"Loaded {len(scheduler.get_jobs())} job(s).")
 
 
 def schedule_lottery(timestamp, callback, args):
@@ -34,5 +32,5 @@ def schedule_lottery(timestamp, callback, args):
         coalesce=False,
         replace_existing=True
     )
-    print(f"Scheduled new job : {job}")
+    logger.debug(f"Scheduled new job : {job}")
     return job

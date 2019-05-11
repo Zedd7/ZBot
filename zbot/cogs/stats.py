@@ -1,18 +1,16 @@
-# -*- coding: utf-8 -*-
-
 import datetime
 import os
+import pathlib
 import re
 import typing
-from pathlib import Path
 
 import discord
 import dotenv
 import requests
 from discord.ext import commands
 
-from zbot import checks
-from zbot import converters
+from zbot import checker
+from zbot import converter
 from zbot import exceptions
 from zbot import utils
 from . import command
@@ -24,7 +22,7 @@ class Stats(command.Command):
     USER_ROLE_NAMES = ['Joueur']
     CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
     EMBED_COLOR = 0xCACBCE
-    EXP_VALUES_FILE_PATH = Path('./res/wn8_exp_values.json')
+    EXP_VALUES_FILE_PATH = pathlib.Path('./res/wn8_exp_values.json')
     EXP_VALUES_FILE_URL = 'https://static.modxvm.com/wn8-data-exp/json/wn8exp.json'
     WN8_COLORS = {  # Following color chart of https://en.wot-life.com/
         0: 0x000000,        # black
@@ -51,7 +49,7 @@ class Stats(command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
-    @commands.check(checks.has_any_user_role)
+    @commands.check(checker.has_any_user_role)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
         player, player_name = await utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
@@ -97,7 +95,7 @@ class Stats(command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
-    @commands.check(checks.has_any_user_role)
+    @commands.check(checker.has_any_user_role)
     async def profile(self, context, player: typing.Union[discord.Member, str] = None):
         player, player_name = await utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
@@ -135,15 +133,15 @@ class Stats(command.Command):
         embed.add_field(name="Identifiant", value=player_details['id'])
         embed.add_field(
             name="Création du compte",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
+            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
         )
         embed.add_field(
             name="Dernière bataille",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
+            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
         )
         embed.add_field(
             name="Dernière connexion",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
+            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
         )
         if player_details['clan']:
             embed.add_field(name="Clan", value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']}/)", inline=False)
@@ -158,7 +156,7 @@ class Stats(command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
-    @commands.check(checks.has_any_user_role)
+    @commands.check(checker.has_any_user_role)
     async def clan(self, context, clan_search_field: typing.Union[discord.Member, str] = None):
         clan_id = None
         if not clan_search_field or isinstance(clan_search_field, discord.Member):
@@ -202,7 +200,7 @@ class Stats(command.Command):
             inline=True)
         embed.add_field(
             name="Création du clan",
-            value=converters.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp'])),
+            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp'])),
             inline=True
         )
         embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres", inline=True)

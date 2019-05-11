@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-
-import sys
-import traceback
-
 from discord.ext import commands
 
 from . import exceptions
+from . import logger
 from . import utils
 
 
@@ -52,9 +48,4 @@ async def handle(context, error):
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
-        print_traceback(error)
-
-
-
-def print_traceback(error):
-    traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        logger.error(error, exc_info=True)

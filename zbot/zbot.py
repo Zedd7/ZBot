@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 
 import dotenv
@@ -8,9 +6,10 @@ from discord.ext.commands import ExtensionNotFound, ExtensionAlreadyLoaded, NoEn
 
 from . import database
 from . import error_handler
+from . import logger
 from . import scheduler
 
-__version__ = '1.1.5'
+__version__ = '1.1.6'
 
 COGS = [
     'zbot.cogs.config',
@@ -36,14 +35,13 @@ db = database.MongoDBDonnector()
 @bot.event
 async def on_ready():
     bot.remove_command('help')
-    print(f"Logged in as {bot.user}.")
+    logger.info(f"Logged in as {bot.user}.")
     for cog in COGS:
         try:
             bot.load_extension(cog)
-            print(f"Loaded extension '{cog.split('.')[-1]}'.")
+            logger.info(f"Loaded extension '{cog.split('.')[-1]}'.")
         except (ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed) as error:
-            print(f"Failed to loaded extension '{cog.split('.')[-1]}'.")
-            error_handler.print_traceback(error)
+            logger.error(f"Failed to loaded extension '{cog.split('.')[-1]}'.", exc_info=True)
 
 
 @bot.event
@@ -59,4 +57,4 @@ def run():
     if bot_token:
         bot.run(bot_token, bot=True, reconnect=True)
     else:
-        print("Not bot token found in .env file under the key 'BOT_TOKEN'.")
+        logger.critical("Not bot token found in .env file under the key 'BOT_TOKEN'.")
