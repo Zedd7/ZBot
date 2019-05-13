@@ -21,6 +21,10 @@ def setup(db: database.MongoDBDonnector):
     logger.info(f"Loaded {len(scheduler.get_jobs())} job(s).")
 
 
+def get_job_run_date(job_id):
+    return scheduler.get_job(job_id).next_run_time
+
+
 def schedule_lottery(timestamp, callback, args):
     job_trigger = DateTrigger(run_date=timestamp)
     job = scheduler.add_job(
@@ -34,3 +38,7 @@ def schedule_lottery(timestamp, callback, args):
     )
     logger.debug(f"Scheduled new job : {job}")
     return job
+
+def cancel_lottery(job_id):
+    scheduler.remove_job(job_id)
+    logger.debug(f"Cancelled job of id : {job_id}")

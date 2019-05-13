@@ -43,8 +43,6 @@ class MongoDBDonnector:
         self.database['lottery'].update_one({'_id': job_id}, {'$set': data})
 
     def load_pending_lotteries(self, pending_lotteries):
-        for pending_lottery in self.database['lottery'].find({}, {'_id': 1, 'message_id': 1, 'emoji': 1}):
-            job_id = pending_lottery['_id']
-            message_id = pending_lottery['message_id']
-            emoji = pending_lottery['emoji']
-            pending_lotteries[message_id] = {'emoji': emoji, 'job_id': job_id}
+        data_keys = ['lottery_id', 'message_id', 'channel_id', 'emoji', 'organizer_id', '_id']
+        for pending_lottery in self.database['lottery'].find({}, dict.fromkeys(data_keys, 1)):
+            pending_lotteries[pending_lottery['message_id']] = {data_key: pending_lottery[data_key] for data_key in data_keys}

@@ -48,6 +48,11 @@ class UnknowClan(commands.CommandError):
         self.unknown_clan_name = unknown_clan_name
 
 
+class UnknowLottery(commands.CommandError):
+    def __init__(self, unknown_lottery_id):
+        self.unknown_lottery_id = unknown_lottery_id
+
+
 class UnknowPlayer(commands.CommandError):
     def __init__(self, unknown_player_name):
         self.unknown_player_name = unknown_player_name

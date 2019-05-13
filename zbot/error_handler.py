@@ -42,6 +42,8 @@ async def handle(context, error):
         await context.send(f"Cet argument est trop petit: `{error.argument_size}` (min: `{error.min_size}`)")
     elif isinstance(error, exceptions.UnknowClan):
         await context.send(f"Clan WoT inconnu: `{error.unknown_clan_name}`")
+    elif isinstance(error, exceptions.UnknowLottery):
+        await context.send(f"Identifiant de tirage au sort inconnu: `{error.unknown_lottery_id}`")
     elif isinstance(error, exceptions.UnknowPlayer):
         await context.send(f"Joueur WoT inconnu: `{error.unknown_player_name}`")
     # Unhandled exceptions

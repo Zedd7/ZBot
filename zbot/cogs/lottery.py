@@ -1,6 +1,5 @@
 import http
 import random
-import sys
 import typing
 
 import discord
@@ -11,15 +10,14 @@ from zbot import checker
 from zbot import converter
 from zbot import error_handler
 from zbot import exceptions
+from zbot import logger
 from zbot import scheduler
 from zbot import utils
 from zbot import zbot
-from zbot import logger
 from . import command
 
 
 class Lottery(command.Command):
-
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
@@ -78,12 +76,44 @@ class Lottery(command.Command):
 
         args = [dest_channel.id, message.id, emoji if isinstance(emoji, str) else emoji.id, nb_winners, organizer.id]
         job_id = scheduler.schedule_lottery(timestamp, self.setup_callback, args).id
-        zbot.db.update_lottery(job_id, {'message_id': message.id, 'emoji': emoji if isinstance(emoji, str) else emoji.id})
-        self.pending_lotteries[message.id] = {'emoji': emoji, 'job_id': job_id}
+        lottery_data = {
+            'lottery_id': self.get_next_lottery_id(),
+            'message_id': message.id,
+            'channel_id': dest_channel.id,
+            'emoji': emoji if isinstance(emoji, str) else emoji.id,
+            'organizer_id': organizer.id,
+        }
+        zbot.db.update_lottery(job_id, lottery_data)
+        lottery_data['_id'] = job_id
+        self.pending_lotteries[message.id] = lottery_data
+
+    def get_next_lottery_id(self):
+        next_lottery_id = 1
+        for lottery_data in self.pending_lotteries.values():
+            lottery_id = lottery_data['lottery_id']
+            if lottery_id >= next_lottery_id:
+                next_lottery_id = lottery_id + 1
+        return next_lottery_id
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        message = reaction.message
+        message_id = message.id
+        emoji = reaction.emoji
+        if message_id in Lottery.pending_lotteries:
+            lottery_emoji = Lottery.pending_lotteries[message_id]['emoji']
+            same_emoji = emoji == lottery_emoji if isinstance(emoji, str) else emoji.id == lottery_emoji
+            if same_emoji and not await checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
+                try:
+                    await user.send(
+                        f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
+                    await message.remove_reaction(emoji, user)
+                except (discord.errors.HTTPException, discord.errors.NotFound, discord.errors.Forbidden):
+                    pass
 
     @staticmethod
     async def setup_callback(channel_id, message_id, emoji_code, nb_winners, organizer_id):
-        del Lottery.pending_lotteries[message_id]
+        Lottery.remove_pending_lottery(message_id)
         channel = command.bot().get_channel(channel_id)
         message = None
         if isinstance(emoji_code, str):  # Emoji is a unicode string
@@ -104,6 +134,56 @@ class Lottery(command.Command):
                 message=message,
             )
             await error_handler.handle(context, error)
+
+    @lottery.command(
+        name='cancel',
+        aliases=['c', 'r', 'remove'],
+        usage="<lottery_id>",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    async def cancel(self, context: commands.Context, lottery_id: int):
+        message_ids = {lottery_data['lottery_id']: message_id for message_id, lottery_data in self.pending_lotteries.items()}
+        if lottery_id not in message_ids:
+            raise exceptions.UnknowLottery(lottery_id)
+        self.remove_pending_lottery(message_ids[lottery_id], cancel_job=True)
+        await context.send(f"Tirage au sort d'identifiant `{lottery_id}` annulé.")
+
+    @staticmethod
+    def remove_pending_lottery(message_id, cancel_job=False):
+        for lottery_data in Lottery.pending_lotteries.values():
+            if lottery_data['lottery_id'] > Lottery.pending_lotteries[message_id]['lottery_id']:
+                lottery_data['lottery_id'] -= 1
+                zbot.db.update_lottery(lottery_data['_id'], {'lottery_id': lottery_data['lottery_id']})
+        if cancel_job:
+            scheduler.cancel_lottery(Lottery.pending_lotteries[message_id]['_id'])
+        del Lottery.pending_lotteries[message_id]
+
+    @lottery.command(
+        name='list',
+        aliases=['l', 'ls'],
+        usage="",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def list(self, context: commands.Context):
+        lottery_descriptions, guild_id = {}, context.guild.id
+        for message_id, lottery_data in self.pending_lotteries.items():
+            lottery_id = lottery_data['lottery_id']
+            channel_id = lottery_data['channel_id']
+            organizer = context.guild.get_member(lottery_data['organizer_id'])
+            timestamp = scheduler.get_job_run_date(lottery_data['_id'])
+            message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
+            lottery_descriptions[lottery_id] = f" • `[{lottery_id}]` - Programmé par {organizer.mention} pour le " \
+                f"[__{converter.humanize_datetime(timestamp)}__]({message_link})"
+        embed_description = "Aucune" if not lottery_descriptions \
+            else "\n".join([lottery_descriptions[lottery_id] for lottery_id in sorted(lottery_descriptions.keys())])
+        embed = discord.Embed(
+            title="Tirages au sort en cours",
+            description=embed_description,
+            color=self.EMBED_COLOR
+        )
+        await context.send(embed=embed)
 
     @lottery.command(
         name='pick',
@@ -193,20 +273,6 @@ class Lottery(command.Command):
             winner_list = await utils.make_user_list(winners, mention=False)
             logger.info(f"Players : {player_list}")
             logger.info(f"Winners : {winner_list}")
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        message = reaction.message
-        message_id = message.id
-        emoji = reaction.emoji
-        if message_id in Lottery.pending_lotteries \
-                and emoji == Lottery.pending_lotteries[message_id]['emoji'] \
-                and not await checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
-            try:
-                await user.send(f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
-                await message.remove_reaction(emoji, user)
-            except (discord.errors.HTTPException, discord.errors.NotFound):
-                pass
 
 
 def setup(bot):

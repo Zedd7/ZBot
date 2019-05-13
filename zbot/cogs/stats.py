@@ -80,12 +80,12 @@ class Stats(command.Command):
             url=f"https://fr.wot-life.com/eu/player/{player_details['name']}/",
             icon_url=player.avatar_url if isinstance(player, discord.Member) else ''
         )
-        embed.add_field(name="Batailles", value=f"{player_details['battles']: .0f}", inline=True)
-        embed.add_field(name="Tier moyen", value=f"{player_details['average_tier']: .2f}", inline=True)
-        embed.add_field(name="Expérience moyenne", value=f"{player_details['average_xp']: .1f}", inline=True)
-        embed.add_field(name="Taux de victoires", value=f"{player_details['win_ratio']: .2f} %", inline=True)
-        embed.add_field(name="WN8", value=f"{player_details['wn8']: .0f}", inline=True)
-        embed.add_field(name="Cote personnelle", value=f"{player_details['rating']: .0f}", inline=True)
+        embed.add_field(name="Batailles", value=f"{player_details['battles']: .0f}")
+        embed.add_field(name="Tier moyen", value=f"{player_details['average_tier']: .2f}")
+        embed.add_field(name="Expérience moyenne", value=f"{player_details['average_xp']: .1f}")
+        embed.add_field(name="Taux de victoires", value=f"{player_details['win_ratio']: .2f} %")
+        embed.add_field(name="WN8", value=f"{player_details['wn8']: .0f}")
+        embed.add_field(name="Cote personnelle", value=f"{player_details['rating']: .0f}")
         await context.send(embed=embed)
 
     @commands.command(
@@ -193,19 +193,18 @@ class Stats(command.Command):
             url=f"https://eu.wargaming.net/clans/wot/{clan_details['id']}/",
             icon_url=clan_details['emblem_url'] if clan_details['emblem_url'] else None
         )
-        embed.add_field(name="Identifiant", value=clan_details['id'], inline=True)
+        embed.add_field(name="Identifiant", value=clan_details['id'])
         embed.add_field(
             name="Commandant",
-            value=f"[{clan_details['leader_name']}](https://worldoftanks.eu/fr/community/accounts/{clan_details['leader_id']}/)",
-            inline=True)
+            value=f"[{clan_details['leader_name']}](https://worldoftanks.eu/fr/community/accounts/{clan_details['leader_id']}/)"
+        )
         embed.add_field(
             name="Création du clan",
-            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp'])),
-            inline=True
+            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp']))
         )
-        embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres", inline=True)
-        embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées", inline=True)
-        embed.add_field(name="Contact de clan", value=clan_details['contact'].mention if clan_details['contact'] else "Aucun", inline=True)
+        embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres")
+        embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées")
+        embed.add_field(name="Contact de clan", value=clan_details['contact'].mention if clan_details['contact'] else "Aucun")
         embed.set_thumbnail(url=clan_details['emblem_url'])
         await context.send(embed=embed)
 
@@ -220,12 +219,12 @@ class Stats(command.Command):
         response = requests.get('https://api.worldoftanks.eu/wot/account/list/', params=payload)
         response_content = response.json()
 
-        player_id, player_name = (None,) * 2
+        player_id = None
         if response_content['status'] == 'ok':
             player_data = response_content['data']
             if player_data:
                 player_id = str(player_data[0]['account_id'])
-                player_name = player_data[0]['nickname']  # Fix player name case
+                player_name = player_data[0]['nickname'] or player_name  # Fix player name case
         return player_id, player_name
 
     @staticmethod
