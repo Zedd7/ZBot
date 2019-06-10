@@ -26,6 +26,11 @@ class MissingRoles(commands.CommandError):
         self.missing_roles = missing_roles
 
 
+class MissingSubCommand(commands.CommandError):
+    def __init__(self, group_command_name):
+        self.group_command_name = group_command_name
+
+
 class MissingUser(commands.CommandError):
     def __init__(self, missing_user_name):
         self.missing_user_name = missing_user_name
@@ -43,16 +48,21 @@ class UndersizedArgument(commands.CommandError):
         self.min_size = min_size
 
 
-class UnknowClan(commands.CommandError):
+class UnknownClan(commands.CommandError):
     def __init__(self, unknown_clan_name):
         self.unknown_clan_name = unknown_clan_name
 
 
-class UnknowLottery(commands.CommandError):
+class UnknownCommand(commands.CommandError):
+    def __init__(self, unknown_command_name):
+        self.unknown_command_name = unknown_command_name
+
+
+class UnknownLottery(commands.CommandError):
     def __init__(self, unknown_lottery_id):
         self.unknown_lottery_id = unknown_lottery_id
 
 
-class UnknowPlayer(commands.CommandError):
+class UnknownPlayer(commands.CommandError):
     def __init__(self, unknown_player_name):
         self.unknown_player_name = unknown_player_name

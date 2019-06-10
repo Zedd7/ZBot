@@ -1,5 +1,6 @@
 import os
 
+import discord
 import dotenv
 from discord.ext import commands
 from discord.ext.commands import ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed
@@ -9,10 +10,11 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.1.7'
+__version__ = '1.2.0'
 
 COGS = [
-    'zbot.cogs.config',
+    'zbot.cogs.admin',
+    'zbot.cogs.info',
     'zbot.cogs.lottery',
     'zbot.cogs.stats',
 ]
@@ -34,14 +36,15 @@ db = database.MongoDBDonnector()
 
 @bot.event
 async def on_ready():
-    bot.remove_command('help')
     logger.info(f"Logged in as {bot.user}.")
+    bot.remove_command('help')
     for cog in COGS:
         try:
             bot.load_extension(cog)
             logger.info(f"Loaded extension '{cog.split('.')[-1]}'.")
-        except (ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed) as error:
+        except (ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed):
             logger.error(f"Failed to loaded extension '{cog.split('.')[-1]}'.", exc_info=True)
+    await bot.change_presence(activity=discord.Game(name="Commandes : +help"))
 
 
 @bot.event

@@ -18,6 +18,9 @@ from . import command
 
 
 class Lottery(command.Command):
+
+    DISPLAY_NAME = "Loterie et sondages"
+    DISPLAY_SEQUENCE = 3
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
@@ -37,12 +40,19 @@ class Lottery(command.Command):
     @commands.guild_only()
     async def lottery(self, context):
         if context.invoked_subcommand is None:
-            await context.send("Commande manquante ou inconnue.")
+            raise exceptions.MissingSubCommand(context.command.name)
 
     @lottery.command(
         name='setup',
         aliases=['s', 'set', 'plan'],
         usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <timestamp> [--no-announce]",
+        brief="Programme un tirage au sort",
+        help="Le bot publie une annonce correspondant au message entouré de guillemets dans le canal de destination. "
+             "Les joueurs participent en cliquant sur l'émoji de réaction. À la date correspondant au timestamp "
+             "(au format `\"YYYY-MM-DD HH:MM:SS\"`), les gagnants sont tirés au sort et contactés par MP par le bot. "
+             "L'organisateur reçoit par MP une copie du résultat et la liste des participants injoignables."
+             "\nPar défaut, l'annonce mentionne automatiquement le rôle `@Abonné Annonces`. "
+             "Pour éviter cela, il faut ajouter l'argument `--no-announce`.",
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
@@ -103,7 +113,9 @@ class Lottery(command.Command):
         if message_id in Lottery.pending_lotteries:
             lottery_emoji = Lottery.pending_lotteries[message_id]['emoji']
             same_emoji = emoji == lottery_emoji if isinstance(emoji, str) else emoji.id == lottery_emoji
-            if same_emoji and not await checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
+            if same_emoji and \
+                    not user.bot and \
+                    not await checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
                 try:
                     await user.send(
                         f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
@@ -114,22 +126,22 @@ class Lottery(command.Command):
     @staticmethod
     async def setup_callback(channel_id, message_id, emoji_code, nb_winners, organizer_id):
         Lottery.remove_pending_lottery(message_id)
-        channel = command.bot().get_channel(channel_id)
+        channel = zbot.bot.get_channel(channel_id)
         message = None
         if isinstance(emoji_code, str):  # Emoji is a unicode string
             emoji = emoji_code
         else:  # Emoji is a custom one (discord.Emoji) and emoji_code is its id
-            emoji = discord.utils.find(lambda e: e.id == emoji_code, command.bot().emojis)
-        organizer = command.bot().get_user(organizer_id)
+            emoji = discord.utils.find(lambda e: e.id == emoji_code, zbot.bot.emojis)
+        organizer = zbot.bot.get_user(organizer_id)
         try:
             message, players, reaction, winners = await Lottery.draw(channel, emoji, message_id, nb_winners)
-            await reaction.remove(command.bot().user)
+            await reaction.remove(zbot.bot.user)
             await Lottery.announce_winners(winners, players, organizer, message)
         except commands.CommandError as error:
             context = commands.Context(
-                bot=command.bot(),
+                bot=zbot.bot,
                 cog=Lottery,
-                prefix=command.bot().command_prefix,
+                prefix=zbot.bot.command_prefix,
                 channel=channel,
                 message=message,
             )
@@ -139,13 +151,15 @@ class Lottery(command.Command):
         name='cancel',
         aliases=['c', 'r', 'remove'],
         usage="<lottery_id>",
+        brief="Annule un tirage au sort",
+        help="Le numéro de loterie est affiché entre crochets par la commande `+lottery list`.",
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
     async def cancel(self, context: commands.Context, lottery_id: int):
         message_ids = {lottery_data['lottery_id']: message_id for message_id, lottery_data in self.pending_lotteries.items()}
         if lottery_id not in message_ids:
-            raise exceptions.UnknowLottery(lottery_id)
+            raise exceptions.UnknownLottery(lottery_id)
         self.remove_pending_lottery(message_ids[lottery_id], cancel_job=True)
         await context.send(f"Tirage au sort d'identifiant `{lottery_id}` annulé.")
 
@@ -162,7 +176,7 @@ class Lottery(command.Command):
     @lottery.command(
         name='list',
         aliases=['l', 'ls'],
-        usage="",
+        brief="Affiche la liste des tirages au sort en cours",
         ignore_extra=False
     )
     @commands.check(checker.has_any_user_role)
@@ -188,7 +202,12 @@ class Lottery(command.Command):
     @lottery.command(
         name='pick',
         aliases=['p'],
-        usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [<organiser>]",
+        usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [organiser] [seed]",
+        brief="Effectue un tirage au sort",
+        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source avec l'émoji fourni "
+             "et publie le résultat dans le canal de destination. Si un organisateur est indiqué, les gagnants sont "
+             "contactés par MP par le bot et l'organisateur reçoit par MP une copie du résultat et la liste des "
+             "participants injoignables. Si un seed est fourni, le tirage au sort se basera sur celui-ci.",
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
@@ -233,7 +252,7 @@ class Lottery(command.Command):
         players = [
             player async for player in reaction.users()
             if await checker.has_any_role(channel.guild, player, Lottery.USER_ROLE_NAMES)
-            and player != command.bot().user
+            and player != zbot.bot.user
         ]
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
@@ -277,4 +296,3 @@ class Lottery(command.Command):
 
 def setup(bot):
     bot.add_cog(Lottery(bot))
-    command.setup(bot)

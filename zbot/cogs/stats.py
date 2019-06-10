@@ -18,10 +18,11 @@ from . import command
 
 class Stats(command.Command):
 
+    DISPLAY_NAME = "Profils et statistiques"
+    DISPLAY_SEQUENCE = 2
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
     CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
-    EMBED_COLOR = 0xCACBCE
     EXP_VALUES_FILE_PATH = pathlib.Path('./res/wn8_exp_values.json')
     EXP_VALUES_FILE_URL = 'https://static.modxvm.com/wn8-data-exp/json/wn8exp.json'
     WN8_COLORS = {  # Following color chart of https://en.wot-life.com/
@@ -45,7 +46,16 @@ class Stats(command.Command):
     @commands.command(
         name='stats',
         aliases=['stat'],
-        usage="[<joueur>]",
+        usage="[joueur]",
+        brief="Affiche le résumé des statistiques d'un joueur",
+        help="Les statistiques du joueur sont calculées à chaque appel. Elles seront donc toujours à jour mais "
+             "nécessiteront quelques secondes pour s'afficher. La couleur de l'embed correspond à celle du WN8."
+             "\n\nLe nom du joueur fourni en argument peut être :\n"
+             "• Une mention d'un utilisateur Discord membre du serveur\n"
+             "• Le nom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le surnom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le pseudo WoT de n'importe quel joueur du cluster EU\n"
+             "Si aucun nom n'est fourni, le surnom du membre du serveur appellant la commande sera utilisé.",
         ignore_extra=False,
     )
     @commands.guild_only()
@@ -54,7 +64,7 @@ class Stats(command.Command):
         player, player_name = await utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:
-            raise exceptions.UnknowPlayer(player_name)
+            raise exceptions.UnknownPlayer(player_name)
         stats_totals = await Stats.get_player_stats_totals(player_id, self.app_id)
         tank_stats, exp_stat_totals, missing_tanks = await Stats.get_player_tank_stats(player_id, self.exp_values, self.app_id)
         adjusted_stats_totals = await Stats.deduct_missing_tanks(player_id, stats_totals, missing_tanks, self.app_id)
@@ -91,7 +101,14 @@ class Stats(command.Command):
     @commands.command(
         name='profile',
         aliases=['profil'],
-        usage="[<joueur>]",
+        usage="[joueur]",
+        brief="Affiche le résumé du profil WoT d'un joueur",
+        help="Le nom du joueur fourni en argument peut être :\n"
+             "• Une mention d'un utilisateur Discord membre du serveur\n"
+             "• Le nom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le surnom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le pseudo WoT de n'importe quel joueur du cluster EU\n"
+             "Si aucun nom n'est fourni, le surnom du membre du serveur appellant la commande sera utilisé.",
         ignore_extra=False,
     )
     @commands.guild_only()
@@ -100,7 +117,7 @@ class Stats(command.Command):
         player, player_name = await utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:
-            raise exceptions.UnknowPlayer(player_name)
+            raise exceptions.UnknownPlayer(player_name)
         creation_timestamp, last_battle_timestamp, logout_timestamp, clan_id = await Stats.get_player_info(player_id, self.app_id)
         clan_position = await Stats.get_clan_member_infos(player_id, self.app_id)
         clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
@@ -152,7 +169,17 @@ class Stats(command.Command):
     @commands.command(
         name='clan',
         aliases=[],
-        usage="[<clan_tag|clan_name|player_name>]",
+        usage="[clan_tag|clan_name|player_name]",
+        brief="Affiche le résumé de la présentation d'un clan WoT",
+        help="La couleur de l'embed correspond à celle renseignée dans la description du clan sur le portail."
+             "\n\nLes paramètres de recherche fournis en argument peuvent être :\n"
+             "• Une mention d'un utilisateur Discord membre du serveur\n"
+             "• Le nom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le surnom d'utilisateur Discord d'un membre du serveur\n"
+             "• Le tag de n'importe quel clan WoT du cluster EU\n"
+             "• Un extrait du nom (entre guillemets) de n'importe quel clan WoT du cluster EU\n"
+             "Si aucun paramètre de recherche n'est fourni, le surnom du membre du serveur appellant la commande "
+             "sera utilisé pour chercher le clan correspondant.",
         ignore_extra=False,
     )
     @commands.guild_only()
@@ -163,7 +190,7 @@ class Stats(command.Command):
             _, player_name = await utils.parse_player(context, clan_search_field)
             player_id, _ = await Stats.get_player_id(player_name, self.app_id)
             if not player_id:
-                raise exceptions.UnknowPlayer(player_name)
+                raise exceptions.UnknownPlayer(player_name)
             _, _, _, clan_id = await Stats.get_player_info(player_id, self.app_id)
             if not clan_id:
                 raise exceptions.MissingClan(player_name)
@@ -174,7 +201,7 @@ class Stats(command.Command):
             clan_search_field = pattern.sub(lambda m: replacements[re.escape(m.group(0))], clan_search_field)
             clan_id = await Stats.get_clan_id(clan_search_field, self.app_id)
             if not clan_id:
-                raise exceptions.UnknowClan(clan_search_field)
+                raise exceptions.UnknownClan(clan_search_field)
 
         clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
         clan_contact = await Stats.get_clan_contact(clan_id, context.guild.members, self.app_id)
@@ -506,4 +533,3 @@ class Stats(command.Command):
 
 def setup(bot):
     bot.add_cog(Stats(bot))
-    command.setup(bot)
