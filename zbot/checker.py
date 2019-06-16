@@ -31,11 +31,15 @@ async def has_any_guild_role(context, role_names_key, print_error=True):
 
 async def has_any_role(guild: discord.Guild, user: discord.User, role_names: list):
     for role_name in role_names:
-        if await has_role(guild, user, role_name):
+        if await has_guild_role(guild, user, role_name):
             return True
     return False
 
 
-async def has_role(guild: discord.Guild, user: discord.User, role_name: str):
+async def has_guild_role(guild: discord.Guild, user: discord.User, role_name: str):
     member = guild.get_member(user.id)
-    return member and discord.utils.get(member.roles, name=role_name)
+    return member and await has_role(member, role_name)
+
+
+async def has_role(member: discord.Member, role_name: str):
+    return discord.utils.get(member.roles, name=role_name)

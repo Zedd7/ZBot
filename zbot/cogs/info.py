@@ -100,7 +100,11 @@ class Info(bot_command.Command):
     )
     async def version(self, context):
         bot_display_name = await self.get_bot_display_name(self.user, context)
-        embed = discord.Embed(title=f"Version de @{bot_display_name}", description=f"**{zbot.__version__}**")
+        embed = discord.Embed(
+            title=f"Version de @{bot_display_name}",
+            description=f"**{zbot.__version__}**",
+            color=self.EMBED_COLOR
+        )
         await context.send(embed=embed)
 
     @commands.command(
@@ -115,7 +119,8 @@ class Info(bot_command.Command):
         bot_display_name = await self.get_bot_display_name(self.user, context)
         embed = discord.Embed(
             title=f"Code source de @{bot_display_name}",
-            description=f"https://github.com/Zedd7/ZBot"
+            description=f"https://github.com/Zedd7/ZBot",
+            color=self.EMBED_COLOR
         )
         await context.send(embed=embed)
 

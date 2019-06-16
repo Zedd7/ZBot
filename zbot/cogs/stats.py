@@ -119,7 +119,7 @@ class Stats(command.Command):
         if not player_id:
             raise exceptions.UnknownPlayer(player_name)
         creation_timestamp, last_battle_timestamp, logout_timestamp, clan_id = await Stats.get_player_info(player_id, self.app_id)
-        clan_position = await Stats.get_clan_member_infos(player_id, self.app_id)
+        clan_member_infos = await Stats.get_clan_member_infos(player_id, self.app_id)
         clan_infos = await Stats.get_clan_infos(clan_id, self.app_id)
 
         player_details = {
@@ -134,7 +134,7 @@ class Stats(command.Command):
             player_details.update({
                 'clan': True,
                 'clan_id': clan_id,
-                'clan_position': clan_position,
+                'clan_position': clan_member_infos['position'],
                 'clan_name': clan_infos['name'],
                 'clan_tag': clan_infos['tag'],
                 'clan_emblem_url': clan_infos['emblem_url'],
@@ -196,8 +196,8 @@ class Stats(command.Command):
                 raise exceptions.MissingClan(player_name)
         elif isinstance(clan_search_field, str):
             # Remove clan tag delimiters if any
-            replacements = {(re.escape(char)): "" for char in ['[', ']', '(', ')']}
-            pattern = re.compile("|".join(replacements.keys()))
+            replacements = {(re.escape(char)): '' for char in ['[', ']', '(', ')']}
+            pattern = re.compile('|'.join(replacements.keys()))
             clan_search_field = pattern.sub(lambda m: replacements[re.escape(m.group(0))], clan_search_field)
             clan_id = await Stats.get_clan_id(clan_search_field, self.app_id)
             if not clan_id:
@@ -410,7 +410,7 @@ class Stats(command.Command):
 
     @staticmethod
     async def get_player_info(player_id, app_id) -> (int, int, int, str) or None:
-        """Retrieve the stats totals of a player."""
+        """Retrieve the informations a player."""
         payload = {
             'application_id': app_id,
             'account_id': player_id,
@@ -457,7 +457,10 @@ class Stats(command.Command):
             'application_id': app_id,
             'account_id': player_id,
             'language': 'fr',
-            'fields': ','.join(['role_i18n']),
+            'fields': ','.join([
+                'role_i18n',
+                'clan.tag'
+            ]),
         }
         response = requests.get('https://api.worldoftanks.eu/wot/clans/accountinfo/', params=payload)
         response_content = response.json()
@@ -465,11 +468,15 @@ class Stats(command.Command):
         if response_content['status'] == 'ok':
             player_data = response_content['data'][player_id]
             if player_data:
-                return player_data['role_i18n']
+                clan_member_infos = {
+                    'position': player_data['role_i18n'],
+                    'tag': player_data['clan']['tag'],
+                }
+                return clan_member_infos
 
     @staticmethod
     async def get_clan_infos(clan_id, app_id) -> dict or None:
-        """Retrieve the stats totals of a player."""
+        """Retrieve the informations of a clan."""
         payload = {
             'application_id': app_id,
             'clan_id': clan_id,
