@@ -1,4 +1,5 @@
 import datetime
+import http
 import json
 
 import discord
@@ -10,6 +11,7 @@ from . import exceptions
 from . import logger
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
+MAX_MESSAGE_LENGTH = 2000
 
 
 # Command manipulations
@@ -58,6 +60,36 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
     return None
 
 
+# Printers
+
+async def make_user_list(users, mention=True, separator=", "):
+    return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
+
+
+async def make_message_blocks(messages: [str], separator: str = "\n"):
+    """Join a list of messages by a separator in a block. Split the block if it is too long."""
+    blocks, block = [], ""
+    for index, message in enumerate(messages):
+        if len(block) + len(message) + len(separator) <= MAX_MESSAGE_LENGTH:
+            block += message + (separator if index < len(messages) - 1 else "")
+        elif len(message) + len(separator) <= MAX_MESSAGE_LENGTH:
+            blocks.append(block)
+            block = ""
+        else:
+            raise ValueError("message is longer than maximum message length")
+    blocks.append(block)
+    return blocks
+
+
+async def make_announce(context, channel: discord.TextChannel, announce_role_name: str, announce: str, embed: discord.Embed = False, mention_announce_role=True):
+    if mention_announce_role:
+        announce_role = discord.utils.find(lambda role: role.name == announce_role_name, context.guild.roles)
+        content = f"{announce_role.mention + ' ' if announce_role is not None else ''}{announce}"
+        return await channel.send(content=content, embed=embed)
+    else:
+        return await channel.send(content=announce, embed=embed)
+
+
 # WoT data manipulations
 
 async def parse_player(context, player):
@@ -77,7 +109,7 @@ async def parse_player(context, player):
     return player, player_name
 
 
-# Inline getters
+# Safe utilities
 
 async def try_get(error: commands.CommandError, iterable, **filters):
     try:
@@ -99,19 +131,14 @@ async def try_get_message(error: commands.CommandError, channel: discord.TextCha
         raise error
 
 
-# Printers
-
-async def make_user_list(users, mention=True, separator=", "):
-    return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
-
-
-async def make_announce(context, channel: discord.TextChannel, announce_role_name: str, announce: str, embed: discord.Embed = False, mention_announce_role=True):
-    if mention_announce_role:
-        announce_role = discord.utils.find(lambda role: role.name == announce_role_name, context.guild.roles)
-        content = f"{announce_role.mention + ' ' if announce_role is not None else ''}{announce}"
-        return await channel.send(content=content, embed=embed)
-    else:
-        return await channel.send(content=announce, embed=embed)
+async def try_dm(user: discord.User, message: str) -> bool:
+    try:
+        await user.send(message)
+        return True
+    except discord.errors.HTTPException as error:
+        if error.status != http.HTTPStatus.FORBIDDEN:  # DM blocked by user
+            logger.error(error, exc_info=True)
+        return False
 
 
 # Miscellaneous

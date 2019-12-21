@@ -6,7 +6,7 @@ from pymongo.errors import ConnectionFailure
 from . import logger
 
 
-class MongoDBDonnector:
+class MongoDBConnector:
 
     USER_NAME = 'Zedd7'
     DATABASE_NAME = 'zbot'
@@ -25,7 +25,7 @@ class MongoDBDonnector:
                 raise ConnectionFailure("No MongoDB password found in .env file under the key 'MONGODB_PASSWORD'.")
 
             self.client = pymongo.MongoClient(f'mongodb+srv://{self.USER_NAME}:{password}@zbot-5waud.gcp.mongodb.net/test?retryWrites=true')
-            self.client.admin.command('ismaster')  # Check if connected
+            self.client.admin.command('ismaster')  # Check if connected and raises ConnectionFailure if not
             logger.info(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
             self.connected = True
 
@@ -34,7 +34,7 @@ class MongoDBDonnector:
                 self.collections[collection_name] = self.database[collection_name]
             logger.info(f"Loaded {len(self.collections)} collection(s).")
 
-        except ConnectionFailure as error:
+        except ConnectionFailure:
             logger.error(f"Could not connect to MongoDB database '{self.DATABASE_NAME}'.", exc_info=True)
 
         return self.connected

@@ -22,6 +22,7 @@ class Stats(command.Command):
     DISPLAY_SEQUENCE = 2
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
+
     CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
     EXP_VALUES_FILE_PATH = pathlib.Path('./res/wn8_exp_values.json')
     EXP_VALUES_FILE_URL = 'https://static.modxvm.com/wn8-data-exp/json/wn8exp.json'

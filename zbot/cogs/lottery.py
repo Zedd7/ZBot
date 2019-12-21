@@ -24,6 +24,7 @@ class Lottery(command.Command):
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
+
     ANNOUNCE_ROLE_NAME = 'Abonné Annonces'
     EMBED_COLOR = 0xFAA61A
 
@@ -117,8 +118,7 @@ class Lottery(command.Command):
                     not user.bot and \
                     not await checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
                 try:
-                    await user.send(
-                        f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
+                    await utils.try_dm(user, f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
                     await message.remove_reaction(emoji, user)
                 except (discord.errors.HTTPException, discord.errors.NotFound, discord.errors.Forbidden):
                     pass
@@ -273,21 +273,19 @@ class Lottery(command.Command):
             # DM winners
             unreachable_winners = []
             for winner in winners:
-                try:
-                    await winner.send(
-                        f"Félicitations ! Tu as été tiré au sort lors de la loterie organisée par {organizer.display_name} ({organizer.mention}) !\n"
-                        f"Contacte cette personne par MP pour obtenir ta récompense :wink:")
-                except discord.errors.HTTPException as error:
-                    if error.status != http.HTTPStatus.FORBIDDEN:  # DMs blocked by user
-                        logger.error(error, exc_info=True)
+                if not await utils.try_dm(
+                    winner,
+                    f"Félicitations ! Tu as été tiré au sort lors de la loterie organisée par {organizer.display_name} ({organizer.mention}) !\n"
+                    f"Contacte cette personne par MP pour obtenir ta récompense :wink:"
+                ):
                     unreachable_winners.append(winner)
             # DM organizer
             winner_list = await utils.make_user_list(winners)
-            await organizer.send(f"Les gagnants de la loterie sont: {winner_list}")
+            await utils.try_dm(organizer, f"Les gagnants de la loterie sont: {winner_list}")
             if unreachable_winners:
                 unreachable_winner_list = await utils.make_user_list(unreachable_winners)
-                await organizer.send(f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
-            # Log players
+                await utils.try_dm(organizer, f"Les gagnants suivants ont bloqué les MPs et n'ont pas pu être contactés: {unreachable_winner_list}")
+            # Log players and winners
             player_list = await utils.make_user_list(players, mention=False)
             winner_list = await utils.make_user_list(winners, mention=False)
             logger.info(f"Players : {player_list}")

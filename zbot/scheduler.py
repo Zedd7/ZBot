@@ -13,7 +13,7 @@ MISFIRE_GRACE_TIME = int(timedelta(days=1).total_seconds())
 scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 
 
-def setup(db: database.MongoDBDonnector):
+def setup(db: database.MongoDBConnector):
     for collection_name in db.COLLECTION_NAMES:
         jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
@@ -38,6 +38,7 @@ def schedule_lottery(timestamp, callback, args):
     )
     logger.debug(f"Scheduled new job : {job}")
     return job
+
 
 def cancel_lottery(job_id):
     scheduler.remove_job(job_id)

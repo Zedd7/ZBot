@@ -3,15 +3,21 @@ import os
 import discord
 import dotenv
 from discord.ext import commands
-from discord.ext.commands import ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed
+from discord.ext.commands import ExtensionAlreadyLoaded
+from discord.ext.commands import ExtensionFailed
+from discord.ext.commands import ExtensionNotFound
+from discord.ext.commands import NoEntryPointError
 
 from . import database
 from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.3.0'
+__version__ = '1.3.1'
 
+dotenv.load_dotenv()
+
+OWNER_ID = int(os.getenv('OWNER_ID'))
 COGS = [
     'zbot.cogs.admin',
     'zbot.cogs.info',
@@ -27,11 +33,11 @@ def get_prefix(client, message):
 
 bot = commands.Bot(
     command_prefix=get_prefix,
-    owner_id=156837349966217216,
+    owner_id=OWNER_ID,
     case_insensitive=True
 )
 
-db = database.MongoDBDonnector()
+db = database.MongoDBConnector()
 
 
 @bot.event
