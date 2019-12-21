@@ -11,5 +11,5 @@ class Command(commands.Cog):
     EMBED_COLOR = 0x91b6f2
 
     def __init__(self, bot):
-        self.bot = bot
+        self.bot = bot  # TODO make use of in cogs instead of zbot.bot
         self.user = self.bot.user

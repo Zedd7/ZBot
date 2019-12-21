@@ -13,7 +13,7 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.3.1'
+__version__ = '1.3.2'
 
 dotenv.load_dotenv()
 
@@ -44,12 +44,14 @@ db = database.MongoDBConnector()
 async def on_ready():
     logger.info(f"Logged in as {bot.user}.")
     bot.remove_command('help')
+    db.open_connection()
     for cog in COGS:
         try:
             bot.load_extension(cog)
             logger.info(f"Loaded extension '{cog.split('.')[-1]}'.")
         except (ExtensionNotFound, ExtensionAlreadyLoaded, NoEntryPointError, ExtensionFailed):
             logger.error(f"Failed to loaded extension '{cog.split('.')[-1]}'.", exc_info=True)
+    scheduler.setup(db)
     await bot.change_presence(activity=discord.Game(name="Commandes : +help"))
 
 
@@ -59,11 +61,4 @@ async def on_command_error(context: commands.Context, error: commands.CommandErr
 
 
 def run():
-    dotenv.load_dotenv()
-    db.open_connection()
-    scheduler.setup(db)
-    bot_token = os.getenv('BOT_TOKEN')
-    if bot_token:
-        bot.run(bot_token, bot=True, reconnect=True)
-    else:
-        logger.critical("Not bot token found in .env file under the key 'BOT_TOKEN'.")
+    bot.run(os.getenv('BOT_TOKEN'), bot=True, reconnect=True)

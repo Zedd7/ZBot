@@ -8,7 +8,7 @@ from . import database
 from . import logger
 from . import utils
 
-MISFIRE_GRACE_TIME = int(timedelta(days=1).total_seconds())
+MISFIRE_GRACE_TIME = int(timedelta(days=2).total_seconds())
 
 scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 

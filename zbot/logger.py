@@ -18,7 +18,7 @@ def setup_handler(logger, handler, set_suffix=False):
 _logger = logging.getLogger('zbot')
 _logger.setLevel(logging.DEBUG)
 setup_handler(_logger, logging.StreamHandler(sys.stdout))
-setup_handler(_logger, logging.handlers.TimedRotatingFileHandler(DEFAULT_LOG_FILE, when='midnight'), True)
+setup_handler(_logger, logging.handlers.TimedRotatingFileHandler(DEFAULT_LOG_FILE, when='midnight', encoding='utf-8'), set_suffix=True)
 
 
 def debug(message, *args, **kwargs):

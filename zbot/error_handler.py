@@ -28,6 +28,8 @@ async def handle(context, error):
         await context.send(f"Cet emoji n'est pas autorisé: `{error.forbidden_emoji}`")
     elif isinstance(error, exceptions.MissingClan):
         await context.send(f"Aucun clan WoT trouvé pour le joueur: `{error.player_name}`")
+    elif isinstance(error, exceptions.MissingConditionalArgument):
+        await context.send(error.message)
     elif isinstance(error, exceptions.MissingEmoji):
         await context.send(f"Cet emoji n'a pas été trouvé: {error.missing_emoji}")
     elif isinstance(error, exceptions.MissingMessage):

@@ -1,5 +1,7 @@
 from discord.ext import commands
 
+# TODO rename relevant 'missing' to 'unknown'
+
 
 class ForbiddenEmoji(commands.CommandError):
     def __init__(self, forbidden_emoji):
@@ -9,6 +11,11 @@ class ForbiddenEmoji(commands.CommandError):
 class MissingClan(commands.CommandError):
     def __init__(self, player_name):
         self.player_name = player_name
+
+
+class MissingConditionalArgument(commands.CommandError):
+    def __init__(self, message):
+        self.message = message
 
 
 class MissingEmoji(commands.CommandError):

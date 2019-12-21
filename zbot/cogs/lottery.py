@@ -1,4 +1,3 @@
-import http
 import random
 import typing
 
@@ -19,7 +18,7 @@ from . import command
 
 class Lottery(command.Command):
 
-    DISPLAY_NAME = "Loterie et sondages"
+    DISPLAY_NAME = "Loteries & Tirages au sort"
     DISPLAY_SEQUENCE = 3
     MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
@@ -46,7 +45,7 @@ class Lottery(command.Command):
     @lottery.command(
         name='setup',
         aliases=['s', 'set', 'plan'],
-        usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <timestamp> [--no-announce]",
+        usage="<\"announce\"> <emoji> <nb_winners> <#dest_channel> <\"timestamp\"> [--no-announce]",
         brief="Programme un tirage au sort",
         help="Le bot publie une annonce correspondant au message entouré de guillemets dans le canal de destination. "
              "Les joueurs participent en cliquant sur l'émoji de réaction. À la date correspondant au timestamp "
@@ -57,7 +56,7 @@ class Lottery(command.Command):
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
-    async def setup(self, context,
+    async def setup(self, context: commands.Context,  # TODO change args order to match that of pick()
                     announce: str,
                     emoji: typing.Union[discord.Emoji, str],
                     nb_winners: int,
@@ -78,6 +77,7 @@ class Lottery(command.Command):
         organizer = context.author
         embed = discord.Embed(
             title=f"Tirage au sort programmé pour le {converter.humanize_datetime(timestamp)} :alarm_clock:",
+            description=f"Nombre de gagnants: {nb_winners}",
             color=self.EMBED_COLOR
         )
         embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
@@ -123,6 +123,52 @@ class Lottery(command.Command):
                 except (discord.errors.HTTPException, discord.errors.NotFound, discord.errors.Forbidden):
                     pass
 
+    @lottery.command(
+        name='pick',
+        aliases=['p', 'run', 'r'],
+        usage="<#src_channel> <message_id> <emoji> <nb_winners> [#dest_channel] [organizer] [seed]",
+        brief="Effectue un tirage au sort",
+        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source avec l'émoji fourni. "
+             "Si le message est une loterie gérée par le bot, elle se déroule à l'avance dans le message source indiqué. "
+             "Sinon, le canal de destination doit être fourni et est utilisé pour y publier les résultats du tirage"
+             "au sort. Si un organisateur est indiqué, les gagnants sont contactés par MP par le bot et l'organisateur "
+             "reçoit par MP une copie du résultat et la liste des participants injoignables. Si un seed est fourni, "
+             "le tirage au sort se base dessus pour le choix des gagnants.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    async def pick(self, context: commands.Context,
+                   src_channel: discord.TextChannel,
+                   message_id: int,
+                   emoji: typing.Union[discord.Emoji, str],
+                   nb_winners: int,
+                   dest_channel: discord.TextChannel = None,
+                   organizer: discord.User = None,
+                   seed: int = None):
+
+        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
+            raise exceptions.ForbiddenEmoji(emoji)
+        if nb_winners < 1:
+            raise exceptions.UndersizedArgument(nb_winners, 1)
+        if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+
+        message = await utils.try_get_message(exceptions.MissingMessage(message_id), src_channel, message_id)
+        if not dest_channel:
+            if message.author == self.user:
+                if not organizer:
+                    organizer = context.author
+                await Lottery.setup_callback(
+                    src_channel.id, message_id, emoji if isinstance(emoji, str) else emoji.id, nb_winners, organizer.id)
+            else:
+                raise exceptions.MissingConditionalArgument(
+                    "Un canal de destination doit être fourni si le message ciblé n'est pas une loterie.")
+        else:
+            _, players, reaction, winners = await Lottery.draw(src_channel, emoji, message_id, nb_winners, seed)
+            announce = f"Tirage au sort sur base de la réaction {emoji} {f'et du seed `{seed}` ' if seed else ''}" \
+                       f"au message \"`{discord.utils.escape_mentions(message.content)}`\""
+            await Lottery.announce_winners(winners, players, organizer=organizer, message=await context.send(announce))
+
     @staticmethod
     async def setup_callback(channel_id, message_id, emoji_code, nb_winners, organizer_id):
         Lottery.remove_pending_lottery(message_id)
@@ -130,7 +176,7 @@ class Lottery(command.Command):
         message = None
         if isinstance(emoji_code, str):  # Emoji is a unicode string
             emoji = emoji_code
-        else:  # Emoji is a custom one (discord.Emoji) and emoji_code is its id
+        else:  # Emoji is custom (discord.Emoji) and emoji_code is its id
             emoji = discord.utils.find(lambda e: e.id == emoji_code, zbot.bot.emojis)
         organizer = zbot.bot.get_user(organizer_id)
         try:
@@ -149,7 +195,7 @@ class Lottery(command.Command):
 
     @lottery.command(
         name='cancel',
-        aliases=['c', 'r', 'remove'],
+        aliases=['c'],
         usage="<lottery_id>",
         brief="Annule un tirage au sort",
         help="Le numéro de loterie est affiché entre crochets par la commande `+lottery list`.",
@@ -165,6 +211,8 @@ class Lottery(command.Command):
 
     @staticmethod
     def remove_pending_lottery(message_id, cancel_job=False):
+        if message_id not in Lottery.pending_lotteries:
+            return  # Callback of misfired lottery or manual run
         for lottery_data in Lottery.pending_lotteries.values():
             if lottery_data['lottery_id'] > Lottery.pending_lotteries[message_id]['lottery_id']:
                 lottery_data['lottery_id'] -= 1
@@ -190,7 +238,7 @@ class Lottery(command.Command):
             message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
             lottery_descriptions[lottery_id] = f" • `[{lottery_id}]` - Programmé par {organizer.mention} pour le " \
                 f"[__{converter.humanize_datetime(timestamp)}__]({message_link})"
-        embed_description = "Aucune" if not lottery_descriptions \
+        embed_description = "Aucun" if not lottery_descriptions \
             else "\n".join([lottery_descriptions[lottery_id] for lottery_id in sorted(lottery_descriptions.keys())])
         embed = discord.Embed(
             title="Tirages au sort en cours",
@@ -198,39 +246,6 @@ class Lottery(command.Command):
             color=self.EMBED_COLOR
         )
         await context.send(embed=embed)
-
-    @lottery.command(
-        name='pick',
-        aliases=['p'],
-        usage="<#src_channel> <message_id> <emoji> <nb_winners> <#dest_channel> [organiser] [seed]",
-        brief="Effectue un tirage au sort",
-        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source avec l'émoji fourni "
-             "et publie le résultat dans le canal de destination. Si un organisateur est indiqué, les gagnants sont "
-             "contactés par MP par le bot et l'organisateur reçoit par MP une copie du résultat et la liste des "
-             "participants injoignables. Si un seed est fourni, le tirage au sort se basera sur celui-ci.",
-        ignore_extra=False
-    )
-    @commands.check(checker.has_any_mod_role)
-    async def pick(self,
-                   context: commands.Context,
-                   src_channel: discord.TextChannel,
-                   message_id: int,
-                   emoji: typing.Union[discord.Emoji, str],
-                   nb_winners: int,
-                   dest_channel: discord.TextChannel,
-                   organizer: discord.User = None,
-                   seed: int = None):
-
-        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-            raise exceptions.ForbiddenEmoji(emoji)
-        if nb_winners < 1:
-            raise exceptions.UndersizedArgument(nb_winners, 1)
-        if not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
-
-        message, players, reaction, winners = await Lottery.draw(src_channel, emoji, message_id, nb_winners, seed)
-        announce_message = await context.send(f"Tirage au sort sur base de la réaction {emoji} au message \"`{message.content}`\"")
-        await Lottery.announce_winners(winners, players, organizer, announce_message)
 
     @staticmethod
     async def draw(channel, emoji, message_id, nb_winners, seed=None):
@@ -259,15 +274,16 @@ class Lottery(command.Command):
         return players, winners
 
     @staticmethod
-    async def announce_winners(winners, players, organizer=None, message=None):
-        embed = discord.Embed(
-            title="Résultat du tirage au sort :tada:",
-            description=f"Gagnant(s) parmi {len(players)} participant(s):\n" + await utils.make_user_list(winners, "\n"),
-            color=Lottery.EMBED_COLOR
-        )
-        if organizer:
-            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
-        await message.edit(embed=embed)
+    async def announce_winners(winners: [discord.User], players: [discord.User], organizer: discord.User = None, message=None):
+        if message:
+            embed = discord.Embed(
+                title="Résultat du tirage au sort :tada:",
+                description=f"Gagnant(s) parmi {len(players)} participant(s):\n" + await utils.make_user_list(winners, "\n"),
+                color=Lottery.EMBED_COLOR
+            )
+            if organizer:
+                embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+            await message.edit(embed=embed)
 
         if organizer:
             # DM winners
