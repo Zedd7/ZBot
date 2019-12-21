@@ -31,7 +31,7 @@ class Info(bot_command.Command):
             await self.display_generic_help(context)
         else:
             command_name = full_command_name.split(' ')[-1]
-            command = await utils.get_command(context, command_name)
+            command = utils.get_command(context, command_name)
             if not command:
                 raise exceptions.UnknownCommand(command_name)
             elif isinstance(command, commands.Group):

@@ -5,22 +5,22 @@ from . import exceptions
 from . import logger
 
 
-async def has_any_mod_role(context, print_error=True):
-    return await has_any_guild_role(context, 'MOD_ROLE_NAMES', print_error)
+def has_any_mod_role(context, print_error=True):
+    return has_any_guild_role(context, 'MOD_ROLE_NAMES', print_error)
 
 
-async def has_any_user_role(context, print_error=True):
-    return await has_any_guild_role(context, 'USER_ROLE_NAMES', print_error)
+def has_any_user_role(context, print_error=True):
+    return has_any_guild_role(context, 'USER_ROLE_NAMES', print_error)
 
 
-async def has_any_guild_role(context, role_names_key, print_error=True):
+def has_any_guild_role(context, role_names_key, print_error=True):
     # Check if is a DM channel as some commands may be allowed in DMs
     if isinstance(context.message.channel, discord.DMChannel):
         raise commands.NoPrivateMessage()
 
     if hasattr(context.cog, role_names_key):
         role_names = getattr(context.cog, role_names_key)
-        if await has_any_role(context.guild, context.author, role_names):
+        if has_any_role(context.guild, context.author, role_names):
             return True
         elif print_error:
             raise exceptions.MissingRoles(role_names)
@@ -29,17 +29,17 @@ async def has_any_guild_role(context, role_names_key, print_error=True):
     return False
 
 
-async def has_any_role(guild: discord.Guild, user: discord.User, role_names: list):
+def has_any_role(guild: discord.Guild, user: discord.User, role_names: list):
     for role_name in role_names:
-        if await has_guild_role(guild, user, role_name):
+        if has_guild_role(guild, user, role_name):
             return True
     return False
 
 
-async def has_guild_role(guild: discord.Guild, user: discord.User, role_name: str):
+def has_guild_role(guild: discord.Guild, user: discord.User, role_name: str):
     member = guild.get_member(user.id)
-    return member and await has_role(member, role_name)
+    return member and has_role(member, role_name)
 
 
-async def has_role(member: discord.Member, role_name: str):
+def has_role(member: discord.Member, role_name: str):
     return discord.utils.get(member.roles, name=role_name)

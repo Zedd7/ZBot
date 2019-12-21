@@ -7,9 +7,17 @@ TIMEZONE = pytz.timezone('Europe/Brussels')
 
 
 def to_datetime(instant: str):
-    timestamp = dateutil.parser.parse(instant)
-    return TIMEZONE.localize(timestamp)
+    time = dateutil.parser.parse(instant)
+    return TIMEZONE.localize(time)
 
 
-def humanize_datetime(timestamp: datetime.datetime):
-    return timestamp.strftime('%d/%m/%Y à %Hh%M')
+def to_timestamp(time: datetime.datetime) -> int:
+    return int(time.timestamp())
+
+
+def from_timestamp(timestamp: int) -> datetime.datetime:
+    return datetime.datetime.fromtimestamp(timestamp)
+
+
+def humanize_datetime(time: datetime.datetime) -> str:
+    return time.strftime('%d/%m/%Y à %Hh%M')

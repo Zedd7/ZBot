@@ -42,7 +42,13 @@ class MongoDBConnector:
     def update_lottery(self, job_id, data):
         self.database['lottery'].update_one({'_id': job_id}, {'$set': data})
 
+    def delete_lottery(self, job_id):
+        self.database['lottery'].delete_one({'_id': job_id})
+
     def load_pending_lotteries(self, pending_lotteries):
-        data_keys = ['lottery_id', 'message_id', 'channel_id', 'emoji', 'organizer_id', '_id']
+        data_keys = [
+            '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code',
+            'nb_winners', 'next_run_time', 'organizer_id'
+        ]
         for pending_lottery in self.database['lottery'].find({}, dict.fromkeys(data_keys, 1)):
-            pending_lotteries[pending_lottery['message_id']] = {data_key: pending_lottery[data_key] for data_key in data_keys}
+            pending_lotteries[pending_lottery['message_id']] = dict(pending_lottery)

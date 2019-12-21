@@ -1,14 +1,14 @@
 import datetime
 import http
 import json
+import typing
 
 import discord
 import pytz
 import requests
 from discord.ext import commands
 
-from . import exceptions
-from . import logger
+from . import exceptions, logger
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
 MAX_MESSAGE_LENGTH = 2000
@@ -17,23 +17,24 @@ MAX_MESSAGE_LENGTH = 2000
 # Command manipulations
 
 async def send_command_usage(context, command_name) -> None:
-    command = await get_command(context, command_name)
+    command = get_command(context, command_name)
     if not command:
         raise exceptions.UnknownCommand(command_name)
     if command.usage is not None:
         bot_user = context.bot.user
         prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
-        await context.send(f"Syntaxe: `{prefix}{command.qualified_name} {command.usage}`\n")
+        await context.send(f"Syntaxe : `{prefix}{command.qualified_name} {command.usage}`")
+        await context.send(f"Aide : `{prefix}help {command.qualified_name}`")
     else:
         logger.warning(f"No usage defined for {command_name}")
 
 
-async def get_command(context, command_name) -> commands.Command or None:
+def get_command(context, command_name) -> commands.Command or None:
     if command_name not in context.bot.all_commands:
         for _, cog in context.bot.cogs.items():
             if hasattr(cog, 'MAIN_COMMAND_NAME'):
                 parent_command = context.bot.all_commands.get(cog.MAIN_COMMAND_NAME)
-                subcommand = parent_command and await get_subcommand(parent_command, command_name)
+                subcommand = parent_command and get_subcommand(parent_command, command_name)
                 if subcommand:
                     return subcommand
             else:
@@ -43,7 +44,7 @@ async def get_command(context, command_name) -> commands.Command or None:
     return None
 
 
-async def get_subcommand(parent_command, subcommand_name) -> commands.Command or None:
+def get_subcommand(parent_command, subcommand_name) -> commands.Command or None:
     """
     Recursively search for the given command in the subcommands of the parent command and return it.
     :param parent_command: commands.Command
@@ -54,7 +55,7 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
         return parent_command
     elif isinstance(parent_command, commands.core.Group):
         for candidate_subcommand in parent_command.all_commands.values():
-            subcommand = await get_subcommand(candidate_subcommand, subcommand_name)
+            subcommand = get_subcommand(candidate_subcommand, subcommand_name)
             if subcommand:
                 return subcommand
     return None
@@ -62,11 +63,11 @@ async def get_subcommand(parent_command, subcommand_name) -> commands.Command or
 
 # Printers
 
-async def make_user_list(users, mention=True, separator=", "):
+def make_user_list(users, mention=True, separator=", "):
     return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
 
 
-async def make_message_blocks(messages: [str], separator: str = "\n"):
+def make_message_blocks(messages: [str], separator: str = "\n"):
     """Join a list of messages by a separator in a block. Split the block if it is too long."""
     blocks, block = [], ""
     for index, message in enumerate(messages):
@@ -81,18 +82,18 @@ async def make_message_blocks(messages: [str], separator: str = "\n"):
     return blocks
 
 
-async def make_announce(context, channel: discord.TextChannel, announce_role_name: str, announce: str, embed: discord.Embed = False, mention_announce_role=True):
-    if mention_announce_role:
-        announce_role = discord.utils.find(lambda role: role.name == announce_role_name, context.guild.roles)
-        content = f"{announce_role.mention + ' ' if announce_role is not None else ''}{announce}"
-        return await channel.send(content=content, embed=embed)
+def make_announce(context, announce: str, announce_role_name: str = None) -> str:
+    """Prefix the announce with the mention of the announce role, if any."""
+    if announce_role_name:
+        announce_role = try_get(context.guild.roles, error=exceptions.UnknownRole(announce_role_name), name=announce_role_name)
+        return f"{announce_role.mention} {announce}"
     else:
-        return await channel.send(content=announce, embed=embed)
+        return announce
 
 
 # WoT data manipulations
 
-async def parse_player(context, player):
+def parse_player(context, player):
     # Try to cast player name as Discord guild member
     if not player:
         player = context.guild.get_member(context.author.id)
@@ -111,27 +112,33 @@ async def parse_player(context, player):
 
 # Safe utilities
 
-async def try_get(error: commands.CommandError, iterable, **filters):
+def try_get(iterable, error: commands.CommandError = None, **filters):
+    """Attempt to find a element and raises if not found and if an error is provided."""
     try:
         result = discord.utils.get(iterable, **filters)
-        if not result:
+        if not result and error:
             raise error
         return result
     except discord.NotFound:
-        raise error
+        if error:
+            raise error
 
 
-async def try_get_message(error: commands.CommandError, channel: discord.TextChannel, message_id: int):
+async def try_get_message(
+        channel: discord.TextChannel, message_id: int, error: commands.CommandError = None) -> discord.Message:
+    """Attempt to retrieve a message by id and raises if not found and if an error is provided."""
     try:
         message = await channel.fetch_message(message_id)
-        if not message:
+        if not message and error:
             raise error
         return message
     except discord.NotFound:
-        raise error
+        if error:
+            raise error
 
 
 async def try_dm(user: discord.User, message: str) -> bool:
+    """Attempt to dm a user and return True if it was successful, False otherwise."""
     try:
         await user.send(message)
         return True
@@ -143,8 +150,15 @@ async def try_dm(user: discord.User, message: str) -> bool:
 
 # Miscellaneous
 
-async def get_current_time():
+def get_current_time():
     return datetime.datetime.now(TIMEZONE)
+
+
+def get_emoji(emoji_code: typing.Union[str, int], guild_emojis):
+    if isinstance(emoji_code, str):  # Emoji is a unicode string
+        return emoji_code
+    else:  # Emoji is custom (discord.Emoji) and emoji_code is its id
+        return discord.utils.find(lambda e: e.id == emoji_code, guild_emojis)
 
 
 def get_exp_values(exp_values_file_path, exp_values_file_url) -> dict or None:

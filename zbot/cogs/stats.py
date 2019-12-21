@@ -62,7 +62,7 @@ class Stats(command.Command):
     @commands.guild_only()
     @commands.check(checker.has_any_user_role)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
-        player, player_name = await utils.parse_player(context, player)
+        player, player_name = utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:
             raise exceptions.UnknownPlayer(player_name)
@@ -115,7 +115,7 @@ class Stats(command.Command):
     @commands.guild_only()
     @commands.check(checker.has_any_user_role)
     async def profile(self, context, player: typing.Union[discord.Member, str] = None):
-        player, player_name = await utils.parse_player(context, player)
+        player, player_name = utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:
             raise exceptions.UnknownPlayer(player_name)
@@ -188,7 +188,7 @@ class Stats(command.Command):
     async def clan(self, context, clan_search_field: typing.Union[discord.Member, str] = None):
         clan_id = None
         if not clan_search_field or isinstance(clan_search_field, discord.Member):
-            _, player_name = await utils.parse_player(context, clan_search_field)
+            _, player_name = utils.parse_player(context, clan_search_field)
             player_id, _ = await Stats.get_player_id(player_name, self.app_id)
             if not player_id:
                 raise exceptions.UnknownPlayer(player_name)

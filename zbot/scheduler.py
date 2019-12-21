@@ -25,8 +25,8 @@ def get_job_run_date(job_id):
     return scheduler.get_job(job_id).next_run_time
 
 
-def schedule_lottery(timestamp, callback, args):
-    job_trigger = DateTrigger(run_date=timestamp)
+def schedule_lottery(time, callback, *args):
+    job_trigger = DateTrigger(run_date=time)
     job = scheduler.add_job(
         func=callback,
         trigger=job_trigger,
@@ -36,10 +36,15 @@ def schedule_lottery(timestamp, callback, args):
         coalesce=False,
         replace_existing=True
     )
-    logger.debug(f"Scheduled new job : {job}")
+    logger.debug(f"Scheduled new lottery job of id {job.id} : {job}")
     return job
+
+
+def reschedule_lottery(job_id, time):
+    job_trigger = DateTrigger(run_date=time)
+    scheduler.reschedule_job(job_id, trigger=job_trigger)
 
 
 def cancel_lottery(job_id):
     scheduler.remove_job(job_id)
-    logger.debug(f"Cancelled job of id : {job_id}")
+    logger.debug(f"Cancelled lottery job of id : {job_id}")

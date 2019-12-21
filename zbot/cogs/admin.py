@@ -46,7 +46,7 @@ class Admin(command.Command):
     @commands.guild_only()
     async def check(self, context):
         if context.invoked_subcommand is None:
-            raise exceptions.MissingSubCommand(context.command.name)
+            raise exceptions.MissingSubCommand(f'{self.MAIN_COMMAND_NAME} {context.command.name}')
 
     @check.command(
         name='everyone',
@@ -72,7 +72,7 @@ class Admin(command.Command):
         # Ignore first role as it is @everyone
         missing_role_members = list(filter(lambda m: len(m.roles) == 1, members))  # TODO use Python 3.8's walrus operator
         if missing_role_members:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} ne possède aucun rôle."
                 for member in missing_role_members
             ]):
@@ -86,10 +86,10 @@ class Admin(command.Command):
         unauthorized_clan_tag_members = []
         for member in members:
             if re.search(r' *[\[{].{2,5}[\]}] *', member.display_name) and \
-                    not await checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
+                    not checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
                 unauthorized_clan_tag_members.append(member)
         if unauthorized_clan_tag_members:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} arbore un tag de clan sans être contact de clan."
                 for member in unauthorized_clan_tag_members
             ]):
@@ -111,7 +111,7 @@ class Admin(command.Command):
 
         members = []
         for member in context.guild.members:
-            if await checker.has_role(member, self.PLAYER_ROLE_NAME):
+            if checker.has_role(member, self.PLAYER_ROLE_NAME):
                 members.append(member)
         await self.have_players_matching_names(context, members, self.app_id)
         await self.have_players_unique_names(context, members)
@@ -149,7 +149,7 @@ class Admin(command.Command):
                     matched_name.lower() for matched_name in matched_names
                 ], member_batch))
         if unmatched_name_members:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} n'a pas de correspondance de pseudo sur WoT."
                 for member in unmatched_name_members
             ]):
@@ -166,7 +166,7 @@ class Admin(command.Command):
             members_by_name.setdefault(member_name, []).append(member)
         duplicate_name_members = dict(filter(lambda i: len(i[1]) > 1, members_by_name.items()))  # TODO use Python 3.8's walrus operator
         if duplicate_name_members:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le pseudo vérifié **{member_name}** est utilisé par : "
                 f"{', '.join([member.mention for member in colliding_members])}"
                 for member_name, colliding_members in duplicate_name_members.items()
@@ -191,7 +191,7 @@ class Admin(command.Command):
 
         contacts_by_clan = {}
         for member in context.guild.members:
-            if await checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
+            if checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
                 clan_tag = member.display_name.split(' ')[-1]
                 # Remove clan tag delimiters
                 replacements = {(re.escape(char)): '' for char in ['[', ']']}
@@ -211,7 +211,7 @@ class Admin(command.Command):
         """Check that all contacts have a clan tag."""
         missing_clan_tag_members = list(filter(lambda c: ' ' not in c.display_name, contacts))  # TODO use Python 3.8's walrus operator
         if missing_clan_tag_members:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} n'arbore pas de tag de clan."
                 for member in missing_clan_tag_members
             ]):
@@ -224,7 +224,7 @@ class Admin(command.Command):
         """Check whether a clan has more than one contact."""
         multiple_contact_clans = dict(filter(lambda i: len(i[1]) > 1, contacts_by_clan.items()))  # TODO use Python 3.8's walrus operator
         if multiple_contact_clans:
-            for block in await utils.make_message_blocks([
+            for block in utils.make_message_blocks([
                 f"Le clan [{clan_tag}] est représenté par {len(contacts)} membres : "
                 f"{', '.join([contact.mention for contact in contacts])}"
                 for clan_tag, contacts in multiple_contact_clans.items()

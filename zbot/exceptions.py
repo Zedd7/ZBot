@@ -1,3 +1,5 @@
+import typing
+
 from discord.ext import commands
 
 # TODO rename relevant 'missing' to 'unknown'
@@ -44,13 +46,13 @@ class MissingUser(commands.CommandError):
 
 
 class OversizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, max_size: int):
+    def __init__(self, argument_size: typing.Union[int, str], max_size: typing.Union[int, str]):
         self.argument_size = argument_size
         self.max_size = max_size
 
 
 class UndersizedArgument(commands.CommandError):
-    def __init__(self, argument_size: int, min_size: int):
+    def __init__(self, argument_size: typing.Union[int, str], min_size: typing.Union[int, str]):
         self.argument_size = argument_size
         self.min_size = min_size
 
@@ -73,3 +75,8 @@ class UnknownLottery(commands.CommandError):
 class UnknownPlayer(commands.CommandError):
     def __init__(self, unknown_player_name):
         self.unknown_player_name = unknown_player_name
+
+
+class UnknownRole(commands.CommandError):
+    def __init__(self, unknown_role_name):
+        self.unknown_role_name = unknown_role_name
