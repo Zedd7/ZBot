@@ -18,6 +18,17 @@ class Info(_command.Command):
     EMBED_COLOR = 0x91b6f2  # Pastel blue
     MAX_COMMAND_NEST_LEVEL = 1
 
+    PRIMARY_ROLES = [
+        'Administrateur',
+        'Modérateur',
+        'Wargaming',
+        'Contributeur',
+        'Mentor',
+        'Contact de clan',
+        'Joueur',
+        'Visiteur',
+    ]
+
     def __init__(self, bot):
         super().__init__(bot)
 
@@ -65,9 +76,8 @@ class Info(_command.Command):
     async def display_generic_help(context, max_nest_level):
         bot_display_name = await Info.get_bot_display_name(context.bot.user, context)
         embed = discord.Embed(title=f"Commandes de @{bot_display_name}", color=Info.EMBED_COLOR)
-        command_list = Info.get_command_list(context.bot, max_nest_level)
         commands_by_cog = {}
-        for command in command_list:
+        for command in Info.get_command_list(context.bot, max_nest_level):
             commands_by_cog.setdefault(command.cog, []).append(command)
         for cog in sorted(commands_by_cog, key=lambda c: c.DISPLAY_SEQUENCE):
             embed.add_field(
@@ -121,6 +131,40 @@ class Info(_command.Command):
             return command_list
         else:  # Max nesting level is reached or container is in fact a command.
             return [command_container]
+
+    @commands.command(
+        name='members',
+        aliases=['membres', 'joueurs', 'combien'],
+        brief="Affiche le nombre de membres du serveur par rôle",
+        help="Le total des membres du serveur est affiché, ainsi qu'un décompte détaillé pour chacun "
+             "des rôles principaux.",
+        ignore_extra=False,
+    )
+    @commands.guild_only()
+    async def members(self, context: commands.Context):
+        role_sizes = {}
+        for primary_role_name in self.PRIMARY_ROLES:
+            guild_role = utils.try_get(context.guild.roles, name=primary_role_name)
+            role_sizes[primary_role_name] = len(guild_role.members)
+
+        embed = discord.Embed(
+            title=f"Décompte des membres du serveur",
+            description=f"Total : **{len(context.guild.members)}** membres pour "
+                        f"**{len(self.PRIMARY_ROLES)}** roles principaux",
+            color=self.EMBED_COLOR
+        )
+        for role_name in self.PRIMARY_ROLES:
+            embed.add_field(
+                name=role_name,
+                value=f"**{role_sizes[role_name]}** membres",
+                inline=True
+            )
+        embed.add_field(
+            name="Banni",
+            value=f"**{len(await context.guild.bans())}** boulets",
+            inline=True
+        )
+        await context.send(embed=embed)
 
     @commands.command(
         name='version',
