@@ -62,6 +62,8 @@ class Stats(command.Command):
     @commands.guild_only()
     @commands.check(checker.has_any_user_role)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
+        if not self.exp_values:
+            self.exp_values = utils.get_exp_values(Stats.EXP_VALUES_FILE_PATH, Stats.EXP_VALUES_FILE_URL)
         player, player_name = utils.parse_player(context, player)
         player_id, player_name = await Stats.get_player_id(player_name, self.app_id)
         if not player_id:

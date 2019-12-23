@@ -6,6 +6,7 @@ import requests
 from discord.ext import commands
 
 from zbot import checker
+from zbot import converter
 from zbot import exceptions
 from zbot import logger
 from zbot import utils
@@ -23,6 +24,9 @@ class Admin(command.Command):
 
     PLAYER_ROLE_NAME = 'Joueur'
     BATCH_SIZE = 24
+    RECRUITMENT_CHANNEL_ID = 427027398341558272
+    MAX_RECRUITMENT_ANNOUNCE_LENGTH = 1200  # In characters
+    MIN_RECRUITMENT_LINE_LENGTH = 100  # In characters
     WORK_IN_PROGRESS_EMOJI = '👀'
     WORK_DONE_EMOJI = '✅'
 
@@ -70,8 +74,7 @@ class Admin(command.Command):
     async def have_members_any_role(context, members):
         """Check that all members have at least one role."""
         # Ignore first role as it is @everyone
-        missing_role_members = list(filter(lambda m: len(m.roles) == 1, members))  # TODO use Python 3.8's walrus operator
-        if missing_role_members:
+        if missing_role_members := list(filter(lambda m: len(m.roles) == 1, members)):
             for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} ne possède aucun rôle."
                 for member in missing_role_members
@@ -164,8 +167,7 @@ class Admin(command.Command):
         for member in members:
             member_name = member.display_name.split(' ')[0]
             members_by_name.setdefault(member_name, []).append(member)
-        duplicate_name_members = dict(filter(lambda i: len(i[1]) > 1, members_by_name.items()))  # TODO use Python 3.8's walrus operator
-        if duplicate_name_members:
+        if duplicate_name_members := dict(filter(lambda i: len(i[1]) > 1, members_by_name.items())):
             for block in utils.make_message_blocks([
                 f"Le pseudo vérifié **{member_name}** est utilisé par : "
                 f"{', '.join([member.mention for member in colliding_members])}"
@@ -209,8 +211,7 @@ class Admin(command.Command):
     @staticmethod
     async def have_contacts_clan_tag(context, contacts):
         """Check that all contacts have a clan tag."""
-        missing_clan_tag_members = list(filter(lambda c: ' ' not in c.display_name, contacts))  # TODO use Python 3.8's walrus operator
-        if missing_clan_tag_members:
+        if missing_clan_tag_members := list(filter(lambda c: ' ' not in c.display_name, contacts)):
             for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} n'arbore pas de tag de clan."
                 for member in missing_clan_tag_members
@@ -222,8 +223,7 @@ class Admin(command.Command):
     @staticmethod
     async def has_clan_multiple_contacts(context, contacts_by_clan):
         """Check whether a clan has more than one contact."""
-        multiple_contact_clans = dict(filter(lambda i: len(i[1]) > 1, contacts_by_clan.items()))  # TODO use Python 3.8's walrus operator
-        if multiple_contact_clans:
+        if multiple_contact_clans := dict(filter(lambda i: len(i[1]) > 1, contacts_by_clan.items())):
             for block in utils.make_message_blocks([
                 f"Le clan [{clan_tag}] est représenté par {len(contacts)} membres : "
                 f"{', '.join([contact.mention for contact in contacts])}"
@@ -260,13 +260,143 @@ class Admin(command.Command):
                 await context.send(block)
         if demoted_members:
             for block in utils.make_message_blocks([
-                f"Le joueur {member.mention} n'a plus les permissions "
-                f"de recrutement au sein du clan [{real_clan_tag}]."
+                f"Le joueur {member.mention} n'a plus les permissions de recrutement au sein du clan [{real_clan_tag}]."
                 for member, real_clan_tag in demoted_members
             ]):
                 await context.send(block)
         if not disbanded_members and not demoted_members:
-            await context.send("Tous les contacts de clan ont encore leur permissions de recrutement. :ok_hand: ")
+            await context.send("Tous les contacts de clan ont encore leurs permissions de recrutement. :ok_hand: ")
+
+    @check.command(
+        name='recruitment',
+        aliases=['recrutement', 'recrut'],
+        usage="[\"after\"] [limit]",
+        brief="Vérifie la conformité des annonces de recrutement",
+        help="Pour chaque annonce dans le canal #recrutement, il est vérifié que :\n"
+             "• L'auteur de l'annonce possède le rôle @Contact de clan\n"
+             "• L'auteur de l'annonce n'a pas publié d'autres annonces\n"
+             "• La longueur de l'annonce est inférieure à 1200 caractères (min 100/ligne)\n"
+             "• L'annonce ne contient aucun embed\n"
+             "La date `after` filtre les messages dans le temps et doit être au format "
+             "`\"YYYY-MM-DD HH:MM:SS\"`",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    async def recruitment(self, context,
+                          after: converter.to_datetime = converter.to_datetime('1970-01-01'),
+                          limit: int = 100):
+        # TODO handle publication date
+        if limit < 1:
+            raise exceptions.UndersizedArgument(limit, 1)
+        if (utils.get_current_time() - after).total_seconds() <= 0:
+            argument_size = converter.humanize_datetime(after)
+            max_argument_size = converter.humanize_datetime(utils.get_current_time())
+            raise exceptions.OversizedArgument(argument_size, max_argument_size)
+
+        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+
+        recruitment_channel = context.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        recruitment_announces = await recruitment_channel.history(
+            after=after.replace(tzinfo=None),
+            limit=limit,
+            oldest_first=False  # Search in reverse in case the filters limit the results
+        ).flatten()
+        recruitment_announces.reverse()  # Put back oldest match in first place
+        recruitment_announces = list(filter(
+            lambda a: not checker.has_any_mod_role(context, a.author, print_error=False)  # Ignore moderation messages
+            and not a.pinned  # Ignore pinned messages
+            and not a.type.name == 'pins_add',  # Ignore pin notifications
+            recruitment_announces
+        ))
+
+        await self.have_authors_clan_contact_role(context, recruitment_announces)
+        await self.are_recruitment_announces_unique(context, recruitment_announces)
+        await self.are_recruitment_announces_too_long(context, recruitment_announces)
+        await self.have_recruitment_announces_embeds(context, recruitment_announces)
+
+        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+
+    @staticmethod
+    async def have_authors_clan_contact_role(context, announces):
+        """Check that all announce authors have the clan contact role."""
+        if missing_clan_contact_role_announces := list(filter(
+                lambda a: not checker.has_guild_role(context.guild, a.author, Stats.CLAN_CONTACT_ROLE_NAME), announces
+        )):
+            for block in utils.make_message_blocks([
+                f"{announce.author.mention} ne possède pas le rôle @{Stats.CLAN_CONTACT_ROLE_NAME} nécessaire à la "
+                f"publication d'une annonce : {announce.jump_url}" for announce in missing_clan_contact_role_announces
+            ]):
+                await context.send(block)
+        else:
+            await context.send(
+                f"Toutes les annonces de recrutement sont publiées par des @{Stats.CLAN_CONTACT_ROLE_NAME}. :ok_hand: "
+            )
+
+    @staticmethod
+    async def are_recruitment_announces_unique(context, announces):
+        """Check whether all recruitment announces are unique."""
+        announces_by_author = {}
+        for announce in announces:
+            announces_by_author.setdefault(announce.author, []).append(announce)
+        if duplicate_announces_by_author := dict(filter(lambda i: len(i[1]) > 1, announces_by_author.items())):
+            message_link_separator = "\n"
+            for block in utils.make_message_blocks([
+                f"Le joueur {author.mention} a publié {len(announces)} annonces : \n"
+                f"{message_link_separator.join([announce.jump_url for announce in announces])}"
+                for author, announces in duplicate_announces_by_author.items()
+            ]):
+                await context.send(block)
+        else:
+            await context.send("Toutes les annonces de recrutement sont uniques. :ok_hand: ")
+
+    @staticmethod
+    async def are_recruitment_announces_too_long(context, announces):
+        """Check whether there is a too long recruitment announce."""
+        code_block_pattern = re.compile(r'^[^a-zA-Z0-9`]+```.*')
+        too_long_announces = []
+        for announce in announces:
+            if (apparent_length := sum([
+                max(len(line), Admin.MIN_RECRUITMENT_LINE_LENGTH)
+                for line in announce.content.split('\n')
+                if not code_block_pattern.match(line)  # Ignore line starting with code block statements
+            ])) > Admin.MAX_RECRUITMENT_ANNOUNCE_LENGTH:
+                too_long_announces.append((announce, apparent_length))
+        if too_long_announces:
+            await context.send(
+                f"Les critères suivants sont utilisés :\n"
+                f"• Chaque ligne compte comme ayant au moins **{Admin.MIN_RECRUITMENT_LINE_LENGTH}** caractères.\n"
+                f"• La longueur apparente maximale est de **{Admin.MAX_RECRUITMENT_ANNOUNCE_LENGTH}** caractères.\n_ _")
+            for block in utils.make_message_blocks([
+                f"L'annonce de {announce.author.mention} est d'une longueur apparente de **{apparent_length}** "
+                f"caractères (max {Admin.MAX_RECRUITMENT_ANNOUNCE_LENGTH}) : {announce.jump_url}"
+                for announce, apparent_length in too_long_announces
+            ]):
+                await context.send(block)
+        else:
+            await context.send("Toutes les annonces de recrutement sont de longueur réglementaire. :ok_hand: ")
+
+    @staticmethod
+    async def have_recruitment_announces_embeds(context, announces):
+        """Check that announces don't have any embed."""
+        # Ignore line starting with code block statements
+        discord_link_pattern = re.compile(r'discord(app)?\.(com|gg)')
+        embedded_announces = []
+        for announce in announces:
+            # Include announces containing Discord links
+            discord_link_count = len(discord_link_pattern.findall(announce.content))
+            if announce.embeds or discord_link_count:
+                embedded_announces.append((announce, len(announce.embeds) + discord_link_count))
+        if embedded_announces:
+            for block in utils.make_message_blocks([
+                f"L'annonce de {announce.author.mention} contient {embed_count} embed(s) : {announce.jump_url}"
+                for announce, embed_count in embedded_announces
+            ]):
+                await context.send(block)
+        else:
+            await context.send(
+                f"Aucune annonce de recrutement ne contient d'embed. :ok_hand: "
+            )
 
     @admin.command(
         name='logout',

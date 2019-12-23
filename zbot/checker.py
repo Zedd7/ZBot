@@ -5,22 +5,24 @@ from . import exceptions
 from . import logger
 
 
-def has_any_mod_role(context, print_error=True):
-    return has_any_guild_role(context, 'MOD_ROLE_NAMES', print_error)
+def has_any_mod_role(context, user: discord.User = None, print_error=True):
+    """Return True if the context author or provided user has a mod role defined in the context's cog."""
+    return has_any_guild_role(context, 'MOD_ROLE_NAMES', user=user, print_error=print_error)
 
 
-def has_any_user_role(context, print_error=True):
-    return has_any_guild_role(context, 'USER_ROLE_NAMES', print_error)
+def has_any_user_role(context, user: discord.User = None, print_error=True):
+    """Return True if the context author or provided user has a user role defined in the context's cog."""
+    return has_any_guild_role(context, 'USER_ROLE_NAMES', user=user, print_error=print_error)
 
 
-def has_any_guild_role(context, role_names_key, print_error=True):
+def has_any_guild_role(context, role_names_key, user: discord.User = None, print_error=True):
     # Check if is a DM channel as some commands may be allowed in DMs
     if isinstance(context.message.channel, discord.DMChannel):
         raise commands.NoPrivateMessage()
 
     if hasattr(context.cog, role_names_key):
         role_names = getattr(context.cog, role_names_key)
-        if has_any_role(context.guild, context.author, role_names):
+        if has_any_role(context.guild, user or context.author, role_names):
             return True
         elif print_error:
             raise exceptions.MissingRoles(role_names)
