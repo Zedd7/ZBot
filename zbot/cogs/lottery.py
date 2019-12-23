@@ -23,7 +23,7 @@ class Lottery(_command.Command):
     """Commands for management of lotteries."""
 
     DISPLAY_NAME = "Loteries & Tirages au sort"
-    DISPLAY_SEQUENCE = 4
+    DISPLAY_SEQUENCE = 5
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
 

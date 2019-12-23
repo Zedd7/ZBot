@@ -15,7 +15,7 @@ async def handle(context, error):
     elif isinstance(error, commands.CommandNotFound):
         pass  # Ignore messages starting with '+'
         # Use exceptions.UnknownCommand or exceptions.MissingSubCommand for manual raise
-    elif any(isinstance(error, error_type) for error_type in (
+    elif isinstance(error, (
         commands.InvalidEndOfQuotedStringError,
         commands.ExpectedClosingQuoteError,
         commands.UnexpectedQuoteError
@@ -74,7 +74,7 @@ async def handle(context, error):
         await context.send(f"Clan WoT inconnu : `{error.unknown_clan_name}`")
     elif isinstance(error, exceptions.UnknownCommand):
         await context.send(f"Commande inconnue : `{error.unknown_command_name}`")
-    elif any(isinstance(error, error_type) for error_type in (
+    elif isinstance(error, (
         exceptions.UnknownAutomessage,
         exceptions.UnknownLottery,
         exceptions.UnknownPoll,

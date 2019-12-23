@@ -1,6 +1,5 @@
 import datetime
 import re
-import sys
 from copy import copy
 
 import discord
@@ -9,7 +8,6 @@ from discord.ext import commands
 from zbot import checker
 from zbot import converter
 from zbot import exceptions
-from zbot import logger
 from zbot import utils
 from zbot import wot_utils
 from zbot import zbot
@@ -626,22 +624,6 @@ class Admin(_command.Command):
             # Delete announce
             await recruitment_announce.delete()
             await context.send(f"L'annonce a été supprimée et un rapport envoyé par MP. :ok_hand: ")
-
-    @commands.command(
-        name='logout',
-        aliases=['stop', 'disconnect'],
-        brief="Déconnecte le bot",
-        help="Force le bot à se déconnecter du serveur sans arrêter le processus.",
-        hidden=True,
-        ignore_extra=False
-    )
-    @commands.check(checker.has_any_mod_role)
-    @commands.check(checker.is_allowed_in_all_channels)
-    async def logout(self, context):
-        logger.info("Logging out...")
-        await context.send(f"Déconnexion.")
-        await self.bot.logout()
-        sys.exit()
 
 
 def setup(bot):

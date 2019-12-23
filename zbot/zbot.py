@@ -13,17 +13,18 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.5.5'
+__version__ = '1.6.0'
 
 dotenv.load_dotenv()
 
 OWNER_ID = int(os.getenv('OWNER_ID'))
 COGS = [
     'zbot.cogs.admin',
-    'zbot.cogs.info',
+    'zbot.cogs.bot',
     'zbot.cogs.lottery',
     'zbot.cogs.poll',
     'zbot.cogs.messaging',
+    'zbot.cogs.server',
     'zbot.cogs.stats',
 ]
 
