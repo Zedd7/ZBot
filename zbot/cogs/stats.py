@@ -21,7 +21,7 @@ class Stats(_command.Command):
     """Commands for display of players' statistics."""
 
     DISPLAY_NAME = "Profils et statistiques"
-    DISPLAY_SEQUENCE = 2
+    DISPLAY_SEQUENCE = 3
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
     ALLOWED_CHANNELS = ['général', 'gameplay', 'mentorat', 'spam', 'zbot', 'modération', 'logs']
@@ -83,7 +83,9 @@ class Stats(_command.Command):
         if not player_id:
             raise exceptions.UnknownPlayer(player_name)
         stats_totals = wot_utils.get_player_stats_totals(player_id, self.app_id)
-        tank_stats, exp_stat_totals, missing_tanks = wot_utils.get_player_tank_stats(player_id, self.exp_values, self.app_id)
+        tank_stats, exp_stat_totals, missing_tanks = wot_utils.get_player_tank_stats(
+            player_id, self.exp_values, self.app_id
+        )
         adjusted_stats_totals = wot_utils.deduct_missing_tanks(player_id, stats_totals, missing_tanks, self.app_id)
         average_tier = wot_utils.compute_average_tier(tank_stats, self.tank_tiers)
         wn8 = wot_utils.compute_wn8(adjusted_stats_totals, exp_stat_totals)
@@ -184,7 +186,11 @@ class Stats(_command.Command):
             value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
         )
         if player_details['clan']:
-            embed.add_field(name="Clan", value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']}/)", inline=False)
+            embed.add_field(
+                name="Clan",
+                inline=False,
+                value=f"[{player_details['clan_name']}](https://eu.wargaming.net/clans/wot/{player_details['clan_id']})"
+            )
             embed.add_field(name="Position", value=player_details['clan_position'], inline=False)
             embed.set_thumbnail(url=player_details['clan_emblem_url'])
         await context.send(embed=embed)
@@ -246,7 +252,8 @@ class Stats(_command.Command):
         embed.add_field(name="Identifiant", value=clan_details['id'])
         embed.add_field(
             name="Commandant",
-            value=f"[{clan_details['leader_name']}](https://worldoftanks.eu/fr/community/accounts/{clan_details['leader_id']}/)"
+            value=f"[{clan_details['leader_name']}]"
+                  f"(https://worldoftanks.eu/fr/community/accounts/{clan_details['leader_id']}/)"
         )
         embed.add_field(
             name="Création du clan",
@@ -254,7 +261,9 @@ class Stats(_command.Command):
         )
         embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres")
         embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées")
-        embed.add_field(name="Contact de clan", value=clan_details['contact'].mention if clan_details['contact'] else "Aucun")
+        embed.add_field(
+            name="Contact de clan", value=clan_details['contact'].mention if clan_details['contact'] else "Aucun"
+        )
         embed.set_thumbnail(url=clan_details['emblem_url'])
         await context.send(embed=embed)
 

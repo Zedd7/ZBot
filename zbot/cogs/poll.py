@@ -22,7 +22,7 @@ class Poll(_command.Command):
     """Commands for management of polls."""
 
     DISPLAY_NAME = "Sondages"
-    DISPLAY_SEQUENCE = 3
+    DISPLAY_SEQUENCE = 4
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = ['Joueur']
 

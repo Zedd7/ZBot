@@ -22,7 +22,7 @@ class Messaging(_command.Command):
     """Commands for social interactions."""
 
     DISPLAY_NAME = "Communications"
-    DISPLAY_SEQUENCE = 5
+    DISPLAY_SEQUENCE = 6
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = ['Joueur']
     EMBED_COLOR = 0x91b6f2  # Pastel blue
@@ -433,72 +433,6 @@ class Messaging(_command.Command):
             if do_delete:
                 await message.delete()
         await _flush_buffer()
-
-    @commands.group(
-        name='work',
-        brief="Gère les notifications de travaux sur le bot",
-        invoke_without_command=True
-    )
-    @commands.check(checker.has_any_user_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def work(self, context):
-        if context.invoked_subcommand is None:
-            raise exceptions.MissingSubCommand(context.command.name)
-
-    @work.command(
-        name='start',
-        aliases=['begin'],
-        brief="Annonce le début des travaux sur le bot",
-        help="L'annonce est postée dans le canal courant, la commande est supprimée et le status "
-             "est défini sur travaux en cours.",
-        hidden=True,
-        ignore_extra=True
-    )
-    @commands.check(checker.has_any_mod_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def work_start(self, context):
-        zbot.db.update_metadata('work_in_progress', True)
-        await context.message.delete()
-        await context.send(
-            f"**Début des travaux sur le bot {self.user.mention}** :man_factory_worker:"
-        )
-
-    @work.command(
-        name='done',
-        brief="Annonce la fin des travaux sur le bot",
-        help="L'annonce est postée dans le canal courant, la commande est supprimée et le status "
-             "est défini sur travaux terminés.",
-        hidden=True,
-        ignore_extra=True
-    )
-    @commands.check(checker.has_any_mod_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def work_done(self, context):
-        zbot.db.update_metadata('work_in_progress', False)
-        await context.message.delete()
-        await context.send(
-            f"**Fin des travaux sur le bot {self.user.mention}** :mechanical_arm:"
-        )
-
-    @work.command(
-        name='status',
-        aliases=['statut'],
-        brief="Affiche l'état des travaux sur le bot",
-        help="Le résultat est posté dans le canal courant.",
-        ignore_extra=True
-    )
-    @commands.check(checker.has_any_user_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def work_status(self, context):
-        work_in_progress = zbot.db.get_metadata('work_in_progress') or False  # Might not be set
-        if work_in_progress:
-            await context.send(
-                f"**Les travaux sur le bot {self.user.mention} sont toujours en cours** :tools:"
-            )
-        else:
-            await context.send(
-                f"**Les travaux sur le bot {self.user.mention} sont terminés** :ok_hand:"
-            )
 
 
 def setup(bot):
