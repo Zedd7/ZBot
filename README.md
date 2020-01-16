@@ -1,6 +1,7 @@
 # ZBot
 
-The file structure is designed to run on [Heroku](https://heroku.com) and [Repl.it](https://repl.it)
+The file structure is designed to run on [Heroku](https://heroku.com) and [Repl.it](https://repl.it).
+
 For Heroku, the root directory must contain the files:
 - `Procfile` to specify the workers
 - `runtime.txt` to specify the Python environment

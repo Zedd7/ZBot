@@ -9,7 +9,8 @@ import pytz
 import requests
 from discord.ext import commands
 
-from . import exceptions, logger
+from . import exceptions
+from . import logger
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
 MAX_MESSAGE_LENGTH = 2000

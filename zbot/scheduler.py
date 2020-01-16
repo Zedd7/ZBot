@@ -14,7 +14,7 @@ scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 
 
 def setup(db: database.MongoDBConnector):
-    for collection_name in db.COLLECTION_NAMES:
+    for collection_name in dict(filter(lambda i: i[1].get('is_jobstore'), db.COLLECTIONS_CONFIG.items())):
         jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
@@ -31,7 +31,7 @@ def schedule_lottery(time, callback, *args):
         func=callback,
         trigger=job_trigger,
         args=args,
-        jobstore='lottery',
+        jobstore='pending_lottery',
         misfire_grace_time=MISFIRE_GRACE_TIME,
         coalesce=False,
         replace_existing=True
