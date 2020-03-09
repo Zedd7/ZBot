@@ -31,22 +31,27 @@ async def send_command_usage(context, command_name) -> None:
         logger.warning(f"No usage defined for {command_name}")
 
 
-def get_command(context, command_name) -> commands.Command or None:
-    if command_name not in context.bot.all_commands:
-        for _, cog in context.bot.cogs.items():
-            if hasattr(cog, 'MAIN_COMMAND_NAME'):
-                parent_command = context.bot.all_commands.get(cog.MAIN_COMMAND_NAME)
-                subcommand = parent_command and get_subcommand(parent_command, command_name)
-                if subcommand:
-                    return subcommand
-            else:
-                logger.warning(f"No main command defined for {context.cog}.")
-    else:
-        return context.bot.all_commands[command_name]
+def get_command(context, command_name: str) -> commands.Command or None:
+    """
+    Loop over all top-level commands and groups and trigger a search for the given command.
+    :param context: The invocation context
+    :param command_name: The last command of the chain passed to `help`
+    :return: The command if found, else None
+    """
+    for candidate_command_name, candidate_command in context.bot.all_commands.items():
+        if candidate_command_name == command_name:
+            return candidate_command
+        else:
+            subcommand = candidate_command and get_subcommand(candidate_command, command_name)
+            if subcommand:
+                return subcommand
     return None
 
 
-def get_subcommand(parent_command, subcommand_name) -> commands.Command or None:
+def get_subcommand(
+        parent_command: typing.Union[commands.core.Group, commands.core.Command],
+        subcommand_name
+) -> commands.Command or None:
     """
     Recursively search for the given command in the subcommands of the parent command and return it.
     :param parent_command: commands.Command

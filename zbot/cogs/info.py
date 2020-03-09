@@ -20,10 +20,10 @@ class Info(bot_command.Command):
     @commands.command(
         name='help',
         aliases=['h'],
-        usage="[command|category]",
+        usage="[command]",
         brief="Affiche les commandes disponibles",
-        help="Si un groupe de commande est fourni en argument, les commandes du groupe sont affichées. "
-             "Si une commande est fournie en argument, c'est cette fenêtre d'informations qui est affichée.",
+        help="Si une commande de groupe est fournie en argument, les commandes du groupe sont affichées. "
+             "Si une commande normale est fournie en argument, c'est cette fenêtre-ci qui est affichée.",
         ignore_extra=False,
     )
     async def help(self, context, *, full_command_name: str = None):
@@ -47,7 +47,7 @@ class Info(bot_command.Command):
         commands_by_cog = {}
         for command in command_list:
             commands_by_cog.setdefault(command.cog, []).append(command)
-        for cog in sorted(commands_by_cog, key=lambda cog: cog.DISPLAY_SEQUENCE):
+        for cog in sorted(commands_by_cog, key=lambda c: c.DISPLAY_SEQUENCE):
             embed.add_field(
                 name=cog.DISPLAY_NAME,
                 value="\n".join([f"• `+{command}` : {command.brief}" for command in commands_by_cog[cog]]),

@@ -20,7 +20,6 @@ class Admin(command.Command):
 
     DISPLAY_NAME = "Administration"
     DISPLAY_SEQUENCE = 10
-    MAIN_COMMAND_NAME = 'admin'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = []
 
@@ -41,26 +40,36 @@ class Admin(command.Command):
         bot.loop.create_task(zbot.db.update_recruitment_announces(recruitment_channel))
 
     @commands.group(
-        name=MAIN_COMMAND_NAME,
-        invoke_without_command=True
-    )
-    @commands.guild_only()
-    async def admin(self, context):
-        if context.invoked_subcommand is None:
-            raise exceptions.MissingSubCommand(context.command.name)
-
-    @admin.group(
         name='check',
         invoke_without_command=True
     )
     @commands.guild_only()
     async def check(self, context):
         if context.invoked_subcommand is None:
-            raise exceptions.MissingSubCommand(f'{self.MAIN_COMMAND_NAME} {context.command.name}')
+            raise exceptions.MissingSubCommand(context.command.name)
+
+    @check.command(
+        name='all',
+        aliases=[],
+        brief="Effectue toutes les batteries de test",
+        help="",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    async def check_all(self, context):
+        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+
+        await self.check_everyone(context, add_reaction=False)
+        await self.check_players(context, add_reaction=False)
+        await self.check_contacts(context, add_reaction=False)
+        await self.check_recruitments(context, add_reaction=False)
+
+        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        await context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @check.command(
         name='everyone',
-        aliases=['tous'],
+        aliases=[],
         brief="Effectue une batterie de tests sur les membres du serveur",
         help="Pour chaque membre du serveur, il est vérifié que :\n"
              "• Le joueur possède au moins un rôle.\n"
@@ -68,14 +77,14 @@ class Admin(command.Command):
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
-    async def check_everyone(self, context):
-        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+    async def check_everyone(self, context, add_reaction=True):
+        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
         await self.check_everyone_role(context, context.guild.members)
         await self.check_everyone_clan_tag(context, context.guild.members)
 
-        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+        add_reaction and context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        add_reaction and context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @staticmethod
     async def check_everyone_role(context, members):
@@ -117,8 +126,8 @@ class Admin(command.Command):
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
-    async def check_players(self, context):
-        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+    async def check_players(self, context, add_reaction=True):
+        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
         members = []
         for member in context.guild.members:
@@ -128,8 +137,8 @@ class Admin(command.Command):
         await self.check_players_matching_name(context, members, self.app_id)
         await self.check_players_unique_name(context, members)
 
-        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @staticmethod
     async def check_players_matching_name(context, members, app_id):
@@ -198,8 +207,8 @@ class Admin(command.Command):
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
-    async def check_contacts(self, context):
-        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+    async def check_contacts(self, context, add_reaction=True):
+        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
         contacts_by_clan = {}
         for member in context.guild.members:
@@ -216,8 +225,8 @@ class Admin(command.Command):
         await self.check_clans_single_contact(context, contacts_by_clan)
         await self.check_contacts_recruiting_permissions(context, contacts_by_clan, self.app_id)
 
-        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @staticmethod
     async def check_contacts_clan_tag(context, contacts):
@@ -299,7 +308,8 @@ class Admin(command.Command):
     async def check_recruitments(
             self, context,
             after: converter.to_datetime = converter.to_datetime('1970-01-01'),
-            limit: int = 100):
+            limit: int = 100,
+            add_reaction=True):
         if limit < 1:
             raise exceptions.UndersizedArgument(limit, 1)
         if (utils.get_current_time() - after).total_seconds() <= 0:
@@ -307,7 +317,7 @@ class Admin(command.Command):
             max_argument_size = converter.humanize_datetime(utils.get_current_time())
             raise exceptions.OversizedArgument(argument_size, max_argument_size)
 
-        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
         recruitment_channel = context.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         recruitment_announces = await recruitment_channel.history(
@@ -329,8 +339,8 @@ class Admin(command.Command):
         await self.check_recruitment_announces_embeds(context, recruitment_announces)
         await self.check_recruitment_announces_timespan(context, recruitment_channel, recruitment_announces)
 
-        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @staticmethod
     async def check_authors_clan_contact_role(context, announces):
@@ -452,7 +462,7 @@ class Admin(command.Command):
             await context.send(f"Aucune annonce n'a été publiée avant le délai minimum de "
                                f"{Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} jours. :ok_hand: ")
 
-    @admin.command(
+    @commands.command(
         name='logout',
         aliases=['stop', 'disconnect'],
         brief="Déconnecte le bot",

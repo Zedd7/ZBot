@@ -20,7 +20,6 @@ class Lottery(command.Command):
 
     DISPLAY_NAME = "Loteries & Tirages au sort"
     DISPLAY_SEQUENCE = 3
-    MAIN_COMMAND_NAME = 'lottery'
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
 
@@ -34,7 +33,7 @@ class Lottery(command.Command):
         zbot.db.load_pending_lotteries(self.pending_lotteries)
 
     @commands.group(
-        name=MAIN_COMMAND_NAME,
+        name='lottery',
         invoke_without_command=True
     )
     @commands.guild_only()
@@ -242,7 +241,7 @@ class Lottery(command.Command):
     @commands.check(checker.has_any_mod_role)
     async def edit(self, context):
         if context.invoked_subcommand is None:
-            raise exceptions.MissingSubCommand(f'{self.MAIN_COMMAND_NAME} {context.command.name}')
+            raise exceptions.MissingSubCommand(f'lottery {context.command.name}')
 
     @edit.command(
         name='announce',
