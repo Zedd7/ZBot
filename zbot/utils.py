@@ -19,7 +19,7 @@ MAX_MESSAGE_LENGTH = 2000
 # Command manipulations
 
 async def send_command_usage(context, command_name) -> None:
-    command = get_command(context, command_name)
+    command = context.command
     if not command:
         raise exceptions.UnknownCommand(command_name)
     if command.usage is not None:
@@ -31,41 +31,47 @@ async def send_command_usage(context, command_name) -> None:
         logger.warning(f"No usage defined for {command_name}")
 
 
-def get_command(context, command_name: str) -> commands.Command or None:
+def get_commands(context, command_chain: typing.List[str], command_name: str) -> typing.Set[commands.Command]:
     """
     Loop over all top-level commands and groups and trigger a search for the given command.
+    If only the command is given, return all matching commands.
+    If the full command chain is given, return only the matching command corresponding to the chain.
     :param context: The invocation context
-    :param command_name: The last command of the chain passed to `help`
-    :return: The command if found, else None
+    :param command_chain: The command chain passed to `help`, excluding the searched command
+    :param command_name: The command to search
+    :return: The set of matching commands
     """
-    for candidate_command_name, candidate_command in context.bot.all_commands.items():
-        if candidate_command_name == command_name:
-            return candidate_command
-        else:
-            subcommand = candidate_command and get_subcommand(candidate_command, command_name)
-            if subcommand:
-                return subcommand
-    return None
 
+    def _find_subcommands(
+        _parent_command: typing.Union[commands.core.Group, commands.core.Command],
+        _searched_command_name: str,
+    ) -> None:
+        """
+        Recursively search for matches of the given command in the subcommands of the parent command.
+        :param _parent_command: The parent command
+        :param _searched_command_name: The name of the command to match with subcommands
+        :return: None
+        """
+        if _searched_command_name in [_parent_command.name] + _parent_command.aliases:
+            matching_commands.add(_parent_command)
+        elif isinstance(_parent_command, commands.core.Group):
+            for _candidate_matching_command in _parent_command.all_commands.values():
+                _find_subcommands(_candidate_matching_command, _searched_command_name)
 
-def get_subcommand(
-        parent_command: typing.Union[commands.core.Group, commands.core.Command],
-        subcommand_name
-) -> commands.Command or None:
-    """
-    Recursively search for the given command in the subcommands of the parent command and return it.
-    :param parent_command: commands.Command
-    :param subcommand_name: str
-    :return: command: commands.Command
-    """
-    if subcommand_name in [parent_command.name] + parent_command.aliases:
-        return parent_command
-    elif isinstance(parent_command, commands.core.Group):
-        for candidate_subcommand in parent_command.all_commands.values():
-            subcommand = get_subcommand(candidate_subcommand, subcommand_name)
-            if subcommand:
-                return subcommand
-    return None
+    matching_commands = set()  # `all_commands` contains one entry per alias for each command
+    for main_command_name, main_command in context.bot.all_commands.items():
+        if main_command_name == command_name:
+            matching_commands.add(main_command)
+        elif main_command:  # TODO when is this falsy ?
+            _find_subcommands(main_command, command_name)
+    if len(command_chain) > 0:  # Only return commands whose parents match the command chain, if any
+        for matching_command in matching_commands.copy():
+            parent_chain = matching_command.full_parent_name.split(' ')
+            parent_chain_length, command_chain_length = len(parent_chain), len(command_chain)
+            if command_chain != parent_chain[parent_chain_length - command_chain_length:] \
+               or command_chain_length > parent_chain_length:
+                matching_commands.remove(matching_command)
+    return matching_commands
 
 
 # Printers
@@ -154,6 +160,13 @@ async def try_dm(user: discord.User, message: str) -> bool:
             logger.error(error, exc_info=True)
         return False
 
+
+async def try_dms(user: discord.User, messages: typing.List[str], group_in_blocks: bool) -> bool:
+    """Attempt to dm a list of messages to a user and return True if it was successful, False otherwise."""
+    result = True
+    for content in (make_message_blocks(messages) if group_in_blocks else messages):
+        result &= await try_dm(user, content)
+    return result
 
 # Miscellaneous
 

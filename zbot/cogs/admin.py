@@ -2,6 +2,7 @@ import datetime
 import os
 import re
 import sys
+from copy import copy
 
 import requests
 from discord.ext import commands
@@ -98,6 +99,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Tous les joueurs ont au moins un rôle. :ok_hand: ")
+        return missing_role_members
 
     @staticmethod
     async def check_everyone_clan_tag(context, members):
@@ -115,6 +117,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Aucun joueur n'arbore de tag de clan sans être contact de clan. :ok_hand: ")
+        return unauthorized_clan_tag_members
 
     @check.command(
         name='player',
@@ -177,6 +180,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Tous les joueurs ont une correspondance de pseudo sur WoT. :ok_hand: ")
+        return unmatched_name_members
 
     @staticmethod
     async def check_players_unique_name(context, members):
@@ -194,6 +198,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Aucun pseudo vérifié n'est utilisé par plus d'un joueur. :ok_hand: ")
+        return duplicate_name_members
 
     @check.command(
         name='contact',
@@ -239,6 +244,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Tous les contacts de clan arborent un tag de clan. :ok_hand: ")
+        return missing_clan_tag_members
 
     @staticmethod
     async def check_clans_single_contact(context, contacts_by_clan):
@@ -252,6 +258,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Tous les clans représentés le sont par exactement un membre. :ok_hand: ")
+        return multiple_contact_clans
 
     @staticmethod
     async def check_contacts_recruiting_permissions(context, contacts_by_clan, app_id):
@@ -286,6 +293,7 @@ class Admin(command.Command):
                 await context.send(block)
         if not disbanded_members and not demoted_members:
             await context.send("Tous les contacts de clan ont encore leurs permissions de recrutement. :ok_hand: ")
+        return disbanded_members, demoted_members
 
     @check.command(
         name='recruitment',
@@ -357,6 +365,7 @@ class Admin(command.Command):
             await context.send(
                 f"Toutes les annonces de recrutement sont publiées par des @{Stats.CLAN_CONTACT_ROLE_NAME}. :ok_hand: "
             )
+        return missing_clan_contact_role_announces
 
     @staticmethod
     async def check_recruitment_announces_uniqueness(context, announces):
@@ -374,6 +383,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Toutes les annonces de recrutement sont uniques. :ok_hand: ")
+        return duplicate_announces_by_author
 
     @staticmethod
     async def check_recruitment_announces_length(context, announces):
@@ -400,6 +410,7 @@ class Admin(command.Command):
                 await context.send(block)
         else:
             await context.send("Toutes les annonces de recrutement sont de longueur réglementaire. :ok_hand: ")
+        return too_long_announces
 
     @staticmethod
     async def check_recruitment_announces_embeds(context, announces):
@@ -422,6 +433,7 @@ class Admin(command.Command):
             await context.send(
                 f"Aucune annonce de recrutement ne contient d'embed. :ok_hand: "
             )
+        return embedded_announces
 
     @staticmethod
     async def check_recruitment_announces_timespan(context, channel, announces):
@@ -450,6 +462,7 @@ class Admin(command.Command):
                 previous_announce_time = announce_data['time']
                 if previous_announce_time + min_timespan > announce.created_at:
                     before_timespan_announces.append((announce, previous_announce_time))
+                    break  # Only report in regard to the most recent deleted announce
         if before_timespan_announces:
             for block in utils.make_message_blocks([
                 f"L'annonce de {announce.author.mention} a été postée avant le délai minimum de "
@@ -461,6 +474,91 @@ class Admin(command.Command):
         else:
             await context.send(f"Aucune annonce n'a été publiée avant le délai minimum de "
                                f"{Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} jours. :ok_hand: ")
+        return before_timespan_announces
+
+    @commands.group(
+        name='report',
+        invoke_without_command=True
+    )
+    @commands.guild_only()
+    async def report(self, context):
+        if context.invoked_subcommand is None:
+            raise exceptions.MissingSubCommand(context.command.name)
+
+    send_buffer = []  # Serves as a buffer for the message sent to the context
+
+    @staticmethod
+    async def mock_send(content=None, *_args, **_kwargs):
+        """Catch all messages sent to the context whose `send` method has been matched with this."""
+        Admin.send_buffer.append(content)
+
+    @report.command(
+        name='recruitment',
+        aliases=['recruitments', 'recrutement', 'recrut'],
+        usage="<announce_id>",
+        brief="Modère une annonce de recrutement",
+        help="Pour l'annonce de recrutement fournie, si un problème est détecté :\n"
+             "1. L'auteur de l'annonce reçoit le rapport d'analyse, le nom du modérateur et une "
+             "copie du rendu de son annonce.\n"
+             "2. Le modérateur reçoit une copie du rapport.\n"
+             "3. L'annonce est supprimée.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    async def report_recruitment(self, context, announce_id: int):
+        recruitment_channel = context.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        recruitment_announce = await utils.try_get_message(
+            recruitment_channel, announce_id, error=exceptions.MissingMessage(announce_id)
+        )
+        author = recruitment_announce.author
+
+        # Run checks
+
+        patched_context = copy(context)
+        patched_context.send = Admin.mock_send
+        Admin.send_buffer.clear()
+        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) or Admin.send_buffer.pop()
+
+        if not Admin.send_buffer:
+            await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")
+        else:
+            # DM author
+            await utils.try_dm(
+                author,
+                f"Bonjour. Il a été détecté que ton annonce de recrutement ne respectait pas le "
+                f"règlement du serveur. Voici un rapport de l'analyse effectuée: \n _ _"
+            )
+            await utils.try_dms(author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dm(
+                author,
+                f"_ _ \n"
+                f"En attendant que le problème soit réglé, ton annonce as été supprimée.\n"
+                f"En cas de besoin, tu peux contacter {context.author.mention} qui a reçu une copie du "
+                f"rapport d'analyse.\n _ _"
+            )
+            await utils.try_dm(
+                author,
+                f"Copie du contenu de l'annonce:\n _ _ \n"
+                f">>> {recruitment_announce.content}"
+            )
+
+            # DM moderator
+            await utils.try_dm(context.author, f"Rapport d'analyse envoyé à {author.mention}: \n _ _")
+            await utils.try_dms(context.author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dm(
+                context.author,
+                f"_ _ \n"
+                f"Copie du contenu de l'annonce:\n _ _ \n"
+                f">>> {recruitment_announce.content}"
+            )
+
+            # Delete announce
+            await recruitment_announce.delete()
+            await context.send(f"L'annonce a été supprimée et un rapport envoyé par MP. :ok_hand: ")
 
     @commands.command(
         name='logout',

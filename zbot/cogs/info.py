@@ -31,13 +31,16 @@ class Info(bot_command.Command):
             await self.display_generic_help(context)
         else:
             command_name = full_command_name.split(' ')[-1]
-            command = utils.get_command(context, command_name)
-            if not command:
+            command_chain = full_command_name.split(' ')[:-1]
+            matching_commands = utils.get_commands(context, command_chain, command_name)
+            if not matching_commands:
                 raise exceptions.UnknownCommand(command_name)
-            elif isinstance(command, commands.Group):
-                await self.display_group_help(context, command)
             else:
-                await self.display_command_help(context, command)
+                for command in matching_commands:
+                    if isinstance(command, commands.Group):
+                        await self.display_group_help(context, command)
+                    else:
+                        await self.display_command_help(context, command)
 
     @staticmethod
     async def display_generic_help(context):
