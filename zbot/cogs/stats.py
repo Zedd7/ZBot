@@ -18,6 +18,8 @@ from . import command
 
 class Stats(command.Command):
 
+    """Commands for display of players' statistics."""
+
     DISPLAY_NAME = "Profils et statistiques"
     DISPLAY_SEQUENCE = 2
     MOD_ROLE_NAMES = ['Administrateur']
@@ -39,7 +41,7 @@ class Stats(command.Command):
     }
 
     def __init__(self, bot):
-        super(Stats, self).__init__(bot)
+        super().__init__(bot)
         dotenv.load_dotenv()
         self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'
         self.exp_values = utils.get_exp_values(Stats.EXP_VALUES_FILE_PATH, Stats.EXP_VALUES_FILE_URL)

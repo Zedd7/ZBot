@@ -2,11 +2,9 @@ import typing
 
 from discord.ext import commands
 
-# TODO rename relevant 'missing' to 'unknown'
-
 
 class ForbiddenEmoji(commands.CommandError):
-    def __init__(self, forbidden_emoji):
+    def __init__(self, forbidden_emoji=None):
         self.forbidden_emoji = forbidden_emoji
 
 
@@ -69,12 +67,17 @@ class UnknownCommand(commands.CommandError):
 
 class UnknownLottery(commands.CommandError):
     def __init__(self, unknown_lottery_id):
-        self.unknown_lottery_id = unknown_lottery_id
+        self.unknown_id = unknown_lottery_id
 
 
 class UnknownPlayer(commands.CommandError):
     def __init__(self, unknown_player_name):
         self.unknown_player_name = unknown_player_name
+
+
+class UnknownPoll(commands.CommandError):
+    def __init__(self, unknown_poll_id):
+        self.unknown_id = unknown_poll_id
 
 
 class UnknownRole(commands.CommandError):
