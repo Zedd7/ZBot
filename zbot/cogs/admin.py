@@ -13,11 +13,11 @@ from zbot import exceptions
 from zbot import logger
 from zbot import utils
 from zbot import zbot
-from . import command
+from . import _command
 from .stats import Stats
 
 
-class Admin(command.Command):
+class Admin(_command.Command):
 
     """Commands for administration and moderation of the server."""
 
@@ -44,6 +44,7 @@ class Admin(command.Command):
 
     @commands.group(
         name='check',
+        brief="Gère les vérifications automatiques",
         invoke_without_command=True
     )
     @commands.guild_only()
@@ -480,6 +481,7 @@ class Admin(command.Command):
 
     @commands.group(
         name='report',
+        brief="Gère les modérations automatiques",
         invoke_without_command=True
     )
     @commands.guild_only()

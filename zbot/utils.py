@@ -35,7 +35,7 @@ async def send_command_usage(context, command_name) -> None:
 
 def get_commands(context, command_chain: typing.List[str], command_name: str) -> typing.Set[commands.Command]:
     """
-    Loop over all top-level commands and groups and trigger a search for the given command.
+    Loop over all top-level commands and groups, and trigger a search for the given command.
     If only the command is given, return all matching commands.
     If the full command chain is given, return only the matching command corresponding to the chain.
     :param context: The invocation context
@@ -234,7 +234,7 @@ def get_exp_values(exp_values_file_path: pathlib.Path, exp_values_file_url) -> d
 
 def is_option_enabled(options: str, option_name: str) -> bool:
     """
-    Search a match prefixed with `--` for the option in the list of options.
+    Search a match for the option prefixed with `--`.
     :param options: The string of options
     :param option_name: The name of the option to search, without `--`
     :return: True if found, False otherwise
@@ -248,14 +248,25 @@ def is_option_enabled(options: str, option_name: str) -> bool:
 
 def get_option_value(options: str, option_name: str) -> str or None:
     """
-    Search a match prefixed with `--` for the option in the list of options and return its value.
+    Search a match for the option prefixed with `--` and return its value.
     :param options: The string of options
     :param option_name: The name of the option whose value to search, without `--`
     :return: The option value if found, None otherwise
     """
-    p = re.compile(rf'^--{option_name}+=(.+)$')
+    p = re.compile(rf'^--{option_name}+=(\w+)$')
     for option in options and shlex.split(options) or []:  # Preserve inner quoted strings
         if match_result := p.search(option):
             # Extract option value from regex group
             return match_result.group(1)
     return None
+
+
+def remove_option(options: str, option_name: str) -> str:
+    """
+    Search a match for the option prefixed with `--` and return the result of its removal.
+    :param options: The string of options
+    :param option_name: The name of the option to search, without `--`
+    :return: The options stripped from the searched option and its value
+    """
+    p = re.compile(rf'--{option_name}+(=\w+)?')
+    return re.sub(p, '', options).rstrip()

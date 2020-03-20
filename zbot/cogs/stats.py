@@ -13,10 +13,10 @@ from zbot import checker
 from zbot import converter
 from zbot import exceptions
 from zbot import utils
-from . import command
+from . import _command
 
 
-class Stats(command.Command):
+class Stats(_command.Command):
 
     """Commands for display of players' statistics."""
 

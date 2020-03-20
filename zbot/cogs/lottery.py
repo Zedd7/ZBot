@@ -15,15 +15,15 @@ from zbot import logger
 from zbot import scheduler
 from zbot import utils
 from zbot import zbot
-from . import command
+from . import _command
 
 
-class Lottery(command.Command):
+class Lottery(_command.Command):
 
     """Commands for management of lotteries."""
 
     DISPLAY_NAME = "Loteries & Tirages au sort"
-    DISPLAY_SEQUENCE = 3
+    DISPLAY_SEQUENCE = 4
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
 
@@ -48,6 +48,7 @@ class Lottery(command.Command):
 
     @commands.group(
         name='lottery',
+        brief="Gère les tirages au sort",
         invoke_without_command=True
     )
     @commands.guild_only()
@@ -76,7 +77,7 @@ class Lottery(command.Command):
             emoji: typing.Union[discord.Emoji, str],
             nb_winners: int,
             time: converter.to_datetime,
-            *, options=None
+            *, options=""
     ):
         # Check arguments
         if not context.author.permissions_in(dest_channel).send_messages:
@@ -164,26 +165,36 @@ class Lottery(command.Command):
                     not user.bot and \
                     not checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
                 try:
-                    await utils.try_dm(user, f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour participer à cette loterie.")
+                    await utils.try_dm(
+                        user, f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour "
+                              f"participer à cette loterie."
+                    )
                     await message.remove_reaction(emoji, user)
-                except (discord.errors.HTTPException, discord.errors.NotFound, discord.errors.Forbidden):
+                except (
+                        discord.errors.HTTPException,
+                        discord.errors.NotFound,
+                        discord.errors.Forbidden
+                ):
                     pass
 
     @lottery.command(
         name='pick',
         aliases=['p', 'run', 'r'],
-        usage="<#src_channel> <message_id> [:emoji:] [nb_winners] [#dest_channel] [@organizer] [seed]",
+        usage="<#src_channel> <message_id> [:emoji:] [nb_winners] [#dest_channel] [@organizer] "
+              "[seed]",
         brief="Effectue un tirage au sort",
-        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source avec l'émoji fourni. "
-             "Si le message est une loterie gérée par le bot, elle se déroule à l'avance dans le message source indiqué "
-             "en donnant la priorité aux paramètres fournis sur les paramètres originaux. Sinon, le canal de destination "
-             "doit être fourni et est utilisé pour y publier les résultats du tirage au sort. Si un organisateur est "
-             "indiqué, les gagnants sont contactés par MP par le bot et l'organisateur reçoit par MP une copie du "
-             "résultat et de la liste des participants injoignables. Si un seed est fourni, le tirage au sort se base "
-             "dessus pour le choix des gagnants.",
+        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source "
+             "avec l'émoji fourni. Si le message est une loterie gérée par le bot, elle se déroule "
+             "à l'avance dans le message source indiqué en donnant la priorité aux paramètres "
+             "fournis sur les paramètres originaux. Sinon, le canal de destination doit être "
+             "fourni et est utilisé pour y publier les résultats du tirage au sort. Si un "
+             "organisateur est indiqué, les gagnants sont contactés par MP par le bot et "
+             "l'organisateur reçoit par MP une copie du résultat et de la liste des participants "
+             "injoignables. Si un seed est fourni, le tirage au sort se base dessus pour le choix "
+             "des gagnants.",
         ignore_extra=False
     )
-    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.has_any_user_role)
     async def pick(
             self, context: commands.Context,
             src_channel: discord.TextChannel,
@@ -201,11 +212,15 @@ class Lottery(command.Command):
         if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
             raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
 
-        message = await utils.try_get_message(src_channel, message_id, error=exceptions.MissingMessage(message_id))
+        message = await utils.try_get_message(
+            src_channel, message_id, error=exceptions.MissingMessage(message_id)
+        )
         if message.author == self.user:  # Target message is a lottery, run it now
-            # Backup values before they get deleted
-            job_id, lottery_id = (self.pending_lotteries[message_id][key] for key in ('_id', 'lottery_id'))
-
+            job_id, lottery_id, previous_organizer_id = (  # Backup values before they get deleted
+                self.pending_lotteries[message_id][key] for key in ('_id', 'lottery_id', 'organizer_id')
+            )
+            if previous_organizer_id != context.author.id:
+                checker.has_any_mod_role(context, print_error=True)
             await Lottery.run_lottery(
                 message_id,
                 emoji_code=emoji if not emoji or isinstance(emoji, str) else emoji.id,
@@ -228,9 +243,11 @@ class Lottery(command.Command):
             players, reaction, winners = await Lottery.draw(
                 message, src_channel, emoji, nb_winners, seed
             )
-            announce = f"Tirage au sort sur base de la réaction {emoji} {f'et du seed `{seed}` ' if seed else ''}" \
-                       f"au message \"`{message.clean_content}`\""
-            await Lottery.announce_winners(winners, players, organizer=organizer, message=await context.send(announce))
+            announce = f"Tirage au sort sur base de la réaction {emoji}" \
+                       f"{f' et du seed `{seed}`' if seed else ''} au message {message.jump_url}"
+            await Lottery.announce_winners(
+                winners, players, organizer=organizer, message=await context.send(announce)
+            )
 
     @staticmethod
     async def run_lottery(
@@ -259,6 +276,7 @@ class Lottery(command.Command):
 
     @lottery.group(
         name='edit',
+        brief="Modifie un tirage au sort",
         invoke_without_command=True
     )
     @commands.check(checker.has_any_mod_role)
@@ -282,7 +300,7 @@ class Lottery(command.Command):
             self, context: commands.Context,
             lottery_id: int,
             announce: str,
-            *, options=None
+            *, options=""
     ):
         message, channel, _, _, _, _ = await self.get_message_env(lottery_id, raise_if_not_found=True)
 

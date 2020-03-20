@@ -4,10 +4,10 @@ from discord.ext import commands
 from zbot import exceptions
 from zbot import utils
 from zbot import zbot
-from . import command
+from . import _command
 
 
-class Info(command.Command):
+class Info(_command.Command):
 
     """Commands for information about the bot."""
 
@@ -16,6 +16,7 @@ class Info(command.Command):
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
     EMBED_COLOR = 0x91b6f2  # Pastel blue
+    MAX_COMMAND_NEST_LEVEL = 1
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -23,15 +24,30 @@ class Info(command.Command):
     @commands.command(
         name='help',
         aliases=['h'],
-        usage="[command]",
+        usage="[command] [--nest=level]",
         brief="Affiche les commandes disponibles",
-        help="Si une commande de groupe est fournie en argument, les commandes du groupe sont affichées. "
-             "Si une commande normale est fournie en argument, c'est cette fenêtre-ci qui est affichée.",
+        help="Si aucune commande n'est fournie en argument, toutes les commandes existantes sont "
+             "affichées. Si une commande de groupe est fournie en argument, les commandes du "
+             "groupe sont affichées. Si une commande normale est fournie en argument, c'est cette "
+             "fenêtre-ci qui est affichée. Par défaut, seules les commandes ou groupes de "
+             "commandes du niveau suivant sont affichées. Pour changer cela, il faut fournir "
+             "l'argument `--nest=level` où `level` est le nombre de niveaux à parcourir.",
         ignore_extra=False,
     )
-    async def help(self, context, *, full_command_name: str = None):
+    async def help(self, context, *, args: str = ""):
+        max_nest_level = utils.get_option_value(args, 'nest')
+        if max_nest_level:
+            try:
+                max_nest_level = int(max_nest_level)
+            except ValueError:
+                raise exceptions.MisformattedArgument(max_nest_level, "valeur entière")
+        else:
+            max_nest_level = Info.MAX_COMMAND_NEST_LEVEL
+        full_command_name = utils.remove_option(args, 'nest')
         if not full_command_name:
-            await self.display_generic_help(context)
+            if max_nest_level < 1:
+                raise exceptions.UndersizedArgument(max_nest_level, 1)
+            await self.display_generic_help(context, max_nest_level)
         else:
             command_name = full_command_name.split(' ')[-1]
             command_chain = full_command_name.split(' ')[:-1]
@@ -41,15 +57,15 @@ class Info(command.Command):
             else:
                 for command in matching_commands:
                     if isinstance(command, commands.Group):
-                        await self.display_group_help(context, command)
+                        await self.display_group_help(context, command, max_nest_level)
                     else:
                         await self.display_command_help(context, command)
 
     @staticmethod
-    async def display_generic_help(context):
+    async def display_generic_help(context, max_nest_level):
         bot_display_name = await Info.get_bot_display_name(context.bot.user, context)
         embed = discord.Embed(title=f"Commandes de @{bot_display_name}", color=Info.EMBED_COLOR)
-        command_list = Info.get_command_list(context.bot)
+        command_list = Info.get_command_list(context.bot, max_nest_level)
         commands_by_cog = {}
         for command in command_list:
             commands_by_cog.setdefault(command.cog, []).append(command)
@@ -63,8 +79,8 @@ class Info(command.Command):
         await context.send(embed=embed)
 
     @staticmethod
-    async def display_group_help(context, group):
-        command_list = Info.get_command_list(group)
+    async def display_group_help(context, group, max_nest_level):
+        command_list = Info.get_command_list(group, max_nest_level)
         embed = discord.Embed(
             title=group.cog.DISPLAY_NAME,
             description="\n".join([f"• `+{command}` : {command.brief}" for command in command_list]),
@@ -87,13 +103,23 @@ class Info(command.Command):
         await context.send(embed=embed)
 
     @staticmethod
-    def get_command_list(command_container):
-        if isinstance(command_container, commands.core.Group) or isinstance(command_container, commands.Bot):
+    def get_command_list(command_container, max_nest_level, nest_level=0):
+        """
+        Recursively lists all existing (sub-)commands starting from a command container.
+        :param command_container: The bot, a command group or a command
+        :param max_nest_level: The maximum nesting level allowed
+        :param nest_level: The current nesting level
+        :return The list of commands starting from the container up to the maximum nesting level
+        """
+        if nest_level < max_nest_level and (
+                isinstance(command_container, commands.core.Group)
+                or isinstance(command_container, commands.Bot)
+        ):  # commands.core.Command is a superclass of commands.core.Group, no need to test for it.
             command_list = []
             for command_group in command_container.commands:
-                command_list += Info.get_command_list(command_group)
+                command_list += Info.get_command_list(command_group, max_nest_level, nest_level + 1)
             return command_list
-        else:  # Do not test for commands.core.Command as it is a superclass of commands.core.Group
+        else:  # Max nesting level is reached or container is in fact a command.
             return [command_container]
 
     @commands.command(
