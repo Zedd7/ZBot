@@ -38,8 +38,14 @@ async def handle(context, error):
     # ZBot exceptions
 
     elif isinstance(error, exceptions.ForbiddenEmoji):
-        await context.send("Cet emoji n'est pas autorisé" + (f" : `{error.forbidden_emoji}`"
-                                                             if error.forbidden_emoji else "."))
+        await context.send(
+            "Cet emoji n'est pas autorisé" +
+            (f" : `{error.forbidden_emoji}`" if error.forbidden_emoji else ".")
+        )
+    elif isinstance(error, exceptions.MisformattedArgument):
+        await context.send(
+            f"Format d'argument incorrect. Format attendu : `{error.correct_format}`. Valeur "
+            f"de l'argument reçu: `{error.argument}`.")
     elif isinstance(error, exceptions.MissingClan):
         await context.send(f"Aucun clan WoT trouvé pour le joueur : `{error.player_name}`")
     elif isinstance(error, exceptions.MissingConditionalArgument):
