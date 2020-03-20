@@ -9,7 +9,7 @@ class ForbiddenEmoji(commands.CommandError):
 
 
 class MisformattedArgument(commands.CommandError):
-    def __init__(self, argument, correct_format):
+    def __init__(self, argument, correct_format: str):
         self.argument = argument
         self.correct_format = correct_format
 
