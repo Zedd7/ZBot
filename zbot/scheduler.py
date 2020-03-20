@@ -18,33 +18,36 @@ def setup(db: database.MongoDBConnector):
         jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
-    logger.info(f"Loaded {len(scheduler.get_jobs())} job(s).")
+    logger.debug(f"Loaded {len(scheduler.get_jobs())} job(s): "
+                 f"{', '.join([job.id for job in scheduler.get_jobs()])}")
 
 
 def get_job_run_date(job_id):
     return scheduler.get_job(job_id).next_run_time
 
 
-def schedule_lottery(time, callback, *args):
+# Jobstores
+
+def schedule_job(collection_name, time, callback, *args):
     job_trigger = DateTrigger(run_date=time)
     job = scheduler.add_job(
         func=callback,
         trigger=job_trigger,
         args=args,
-        jobstore='pending_lottery',
+        jobstore=collection_name,
         misfire_grace_time=MISFIRE_GRACE_TIME,
         coalesce=False,
         replace_existing=True
     )
-    logger.debug(f"Scheduled new lottery job of id {job.id} : {job}")
+    logger.debug(f"Scheduled new job of id {job.id} : {job}")
     return job
 
 
-def reschedule_lottery(job_id, time):
+def reschedule_job(job_id, time):
     job_trigger = DateTrigger(run_date=time)
     scheduler.reschedule_job(job_id, trigger=job_trigger)
 
 
-def cancel_lottery(job_id):
+def cancel_job(job_id):
     scheduler.remove_job(job_id)
-    logger.debug(f"Cancelled lottery job of id : {job_id}")
+    logger.debug(f"Cancelled job of id : {job_id}")

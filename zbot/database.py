@@ -15,11 +15,11 @@ class MongoDBConnector:
     DATABASE_NAME = 'zbot'
     RECRUITMENT_ANNOUNCES_COLLECTION = 'recruitment_announce'
     PENDING_LOTTERIES_COLLECTION = 'pending_lottery'
+    PENDING_POLLS_COLLECTION = 'pending_poll'
     COLLECTIONS_CONFIG = {
         RECRUITMENT_ANNOUNCES_COLLECTION: {},
-        PENDING_LOTTERIES_COLLECTION: {
-            'is_jobstore': True,
-        }
+        PENDING_LOTTERIES_COLLECTION: {'is_jobstore': True},
+        PENDING_POLLS_COLLECTION: {'is_jobstore': True}
     }
 
     def __init__(self):
@@ -44,13 +44,13 @@ class MongoDBConnector:
             self.client = pymongo.MongoClient(f'mongodb+srv://{username}:{password}'
                                               f'@zbot-5waud.gcp.mongodb.net/test?retryWrites=true')
             self.client.admin.command('ismaster')  # Check if connected and raises ConnectionFailure if not
-            logger.info(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
+            logger.debug(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
             self.connected = True
 
             self.database = self.client[self.DATABASE_NAME]
             for collection_name in self.COLLECTIONS_CONFIG.keys():
                 self.collections[collection_name] = self.database[collection_name]
-            logger.info(f"Loaded {len(self.collections)} collection(s).")
+            logger.debug(f"Loaded {len(self.collections)} collection(s).")
 
         except ConnectionFailure:
             logger.error(
@@ -70,24 +70,19 @@ class MongoDBConnector:
                 upsert=True
             )
             upsert_count += bool(res.upserted_id)
-        logger.info(f"Inserted {upsert_count} new recruitment announce(s).")
+        logger.debug(f"Inserted {upsert_count} new recruitment announce(s).")
 
     def load_recruitment_announces_data(self, query: Dict[str, Any], order: List[Tuple[str, int]]):
         return list(self.database[self.RECRUITMENT_ANNOUNCES_COLLECTION].find(query, sort=order))
 
-    # Lottery
+    # Jobstores
 
-    def update_lottery(self, job_id, data):
-        self.database[self.PENDING_LOTTERIES_COLLECTION].update_one({'_id': job_id}, {'$set': data})
+    def update_job_data(self, collection_name, job_id, data):
+        self.database[collection_name].update_one({'_id': job_id}, {'$set': data})
 
-    def delete_lottery(self, job_id):
-        self.database[self.PENDING_LOTTERIES_COLLECTION].delete_one({'_id': job_id})
+    def delete_job_data(self, collection_name, job_id):
+        self.database[collection_name].delete_one({'_id': job_id})
 
-    def load_pending_lotteries(self, pending_lotteries):
-        data_keys = [
-            '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code',
-            'nb_winners', 'next_run_time', 'organizer_id'
-        ]
-        for pending_lottery in self.database[self.PENDING_LOTTERIES_COLLECTION].find(
-                {}, dict.fromkeys(data_keys, 1)):
-            pending_lotteries[pending_lottery['message_id']] = dict(pending_lottery)
+    def load_pending_jobs_data(self, collection_name, pending_jobs_data, data_keys):
+        for pending_job in self.database[collection_name].find({}, dict.fromkeys(data_keys, 1)):
+            pending_jobs_data[pending_job['message_id']] = dict(pending_job)

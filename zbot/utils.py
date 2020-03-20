@@ -2,6 +2,8 @@ import datetime
 import http
 import json
 import pathlib
+import re
+import shlex
 import typing
 
 import discord
@@ -76,7 +78,7 @@ def get_commands(context, command_chain: typing.List[str], command_name: str) ->
 
 # Printers
 
-def make_user_list(users, mention=True, separator=", "):
+def make_user_list(users: typing.List[discord.User], mention=True, separator=", "):
     return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
 
 
@@ -137,8 +139,28 @@ def try_get(iterable, error: commands.CommandError = None, **filters):
             raise error
 
 
+def try_get_emoji(emojis, emoji_code: typing.Union[str, int], error: commands.CommandError = None) \
+        -> typing.Union[str, discord.Emoji] or None:
+    """
+    Attempt to retrieve an emoji by code (unicode string or integer ID) and raises if not found and
+    if an error is provided.
+    """
+    if isinstance(emoji_code, str):  # Emoji is a unicode string
+        return emoji_code
+    else:  # Emoji is custom (discord.Emoji) and emoji_code is its id
+        try:
+            emoji = discord.utils.find(lambda e: e.id == emoji_code, emojis)
+            if not emoji and error:
+                raise error
+            return emoji
+        except discord.NotFound:
+            if error:
+                raise error
+
+
 async def try_get_message(
-        channel: discord.TextChannel, message_id: int, error: commands.CommandError = None) -> discord.Message:
+        channel: discord.TextChannel, message_id: int, error: commands.CommandError = None) \
+        -> discord.Message:
     """Attempt to retrieve a message by id and raises if not found and if an error is provided."""
     try:
         message = await channel.fetch_message(message_id)
@@ -168,17 +190,11 @@ async def try_dms(user: discord.User, messages: typing.List[str], group_in_block
         result &= await try_dm(user, content)
     return result
 
+
 # Miscellaneous
 
 def get_current_time():
     return datetime.datetime.now(TIMEZONE)
-
-
-def get_emoji(emoji_code: typing.Union[str, int], guild_emojis):
-    if isinstance(emoji_code, str):  # Emoji is a unicode string
-        return emoji_code
-    else:  # Emoji is custom (discord.Emoji) and emoji_code is its id
-        return discord.utils.find(lambda e: e.id == emoji_code, guild_emojis)
 
 
 def get_exp_values(exp_values_file_path: pathlib.Path, exp_values_file_url) -> dict or None:
@@ -194,14 +210,14 @@ def get_exp_values(exp_values_file_path: pathlib.Path, exp_values_file_url) -> d
             with exp_values_file_path.open(mode='w') as exp_values_file:
                 exp_values_file.write(response.text)
                 exp_values_json = response.json()
-            logger.info(f"Could not find {exp_values_file_path.name}, created it.")
+            logger.debug(f"Could not find {exp_values_file_path.name}, created it.")
         else:
             logger.warning(f"Could not reach {exp_values_file_url} - "
                            f"Skipped loading of expected WN8 values.")
     else:
         with exp_values_file_path.open(mode='r') as exp_values_file:
             exp_values_json = json.load(exp_values_file)
-        logger.info(f"Loaded expected WN8 values from {exp_values_file_path.name}.")
+        logger.debug(f"Loaded expected WN8 values from {exp_values_file_path.name}.")
 
     if exp_values_json:
         exp_values = {}
@@ -214,3 +230,32 @@ def get_exp_values(exp_values_file_path: pathlib.Path, exp_values_file_url) -> d
                 'win_ratio': tank_data['expWinRate'],
             }
         return exp_values
+
+
+def is_option_enabled(options: str, option_name: str) -> bool:
+    """
+    Search a match prefixed with `--` for the option in the list of options.
+    :param options: The string of options
+    :param option_name: The name of the option to search, without `--`
+    :return: True if found, False otherwise
+    """
+    p = re.compile(rf'^--{option_name}$')
+    for option in options and shlex.split(options) or []:  # Preserve inner quoted strings
+        if p.search(option):
+            return True
+    return False
+
+
+def get_option_value(options: str, option_name: str) -> str or None:
+    """
+    Search a match prefixed with `--` for the option in the list of options and return its value.
+    :param options: The string of options
+    :param option_name: The name of the option whose value to search, without `--`
+    :return: The option value if found, None otherwise
+    """
+    p = re.compile(rf'^--{option_name}+=(.+)$')
+    for option in options and shlex.split(options) or []:  # Preserve inner quoted strings
+        if match_result := p.search(option):
+            # Extract option value from regex group
+            return match_result.group(1)
+    return None

@@ -4,18 +4,21 @@ from discord.ext import commands
 from zbot import exceptions
 from zbot import utils
 from zbot import zbot
-from . import command as bot_command
+from . import command
 
 
-class Info(bot_command.Command):
+class Info(command.Command):
+
+    """Commands for information about the bot."""
 
     DISPLAY_NAME = "Aide & Informations"
     DISPLAY_SEQUENCE = 1
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
+    EMBED_COLOR = 0x91b6f2  # Pastel blue
 
     def __init__(self, bot):
-        super(Info, self).__init__(bot)
+        super().__init__(bot)
 
     @commands.command(
         name='help',

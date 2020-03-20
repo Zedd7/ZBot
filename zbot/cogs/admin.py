@@ -19,6 +19,8 @@ from .stats import Stats
 
 class Admin(command.Command):
 
+    """Commands for administration and moderation of the server."""
+
     DISPLAY_NAME = "Administration"
     DISPLAY_SEQUENCE = 10
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
@@ -35,7 +37,7 @@ class Admin(command.Command):
     WORK_DONE_EMOJI = '✅'
 
     def __init__(self, bot):
-        super(Admin, self).__init__(bot)
+        super().__init__(bot)
         self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'
         recruitment_channel = bot.get_channel(self.RECRUITMENT_CHANNEL_ID)
         bot.loop.create_task(zbot.db.update_recruitment_announces(recruitment_channel))
