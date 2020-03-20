@@ -57,12 +57,12 @@ class Poll(command.Command):
     @poll.command(
         name='start',
         aliases=['s'],
-        usage="<\"announce\"> <\"description\"> <#dest_channel> <\":emoji1: :emoji2: ...\"> <\"time\"> "
-              "[--exclusive] [--role=\"name\"] [--do-announce] [--pin]",
+        usage="<\"announce\"> <\"description\"> <#dest_channel> <\":emoji1: :emoji2: ...\"> "
+              "<\"time\"> [--exclusive] [--role=\"name\"] [--do-announce] [--pin]",
         brief="Démarre un sondage",
         help="Le bot publie un sondage sous forme d'un message correspondant à l'annonce et d'un "
              "embed contenant la description (qui peut être sur plusieurs lignes) dans le canal de "
-             "destination. Les joueurs participent en cliquant sur le ou les émoji(s) de réaction "
+             "destination. Les joueurs participent en cliquant sur le ou les émojis de réaction "
              "(fournis entre guillemets et séparés par un espace). À la date et à l'heure "
              "indiquées (au format `\"YYYY-MM-DD HH:MM:SS\"`), les résultats sont affichés dans un "
              "second message. Par défaut, le sondage est à choix multiple et il n'y a aucune "
@@ -253,6 +253,236 @@ class Poll(command.Command):
                 message=message,
             )
             await error_handler.handle(context, error)
+
+    @poll.group(
+        name='edit',
+        invoke_without_command=True
+    )
+    @commands.check(checker.has_any_user_role)
+    async def edit(self, context):
+        if context.invoked_subcommand is None:
+            raise exceptions.MissingSubCommand(f'poll {context.command.name}')
+
+    @edit.command(
+        name='announce',
+        aliases=['annonce', 'a'],
+        usage="<poll_id> <\"announce\"> [--do-announce] [--pin]",
+        brief="Modifie l'annonce du sondage",
+        help="La précédente annonce associée au sondage est remplacée par le message fourni. Pour "
+             "que la nouvelle annonce mentionne automatiquement le rôle `@Abonné Annonces`, "
+             "ajoutez l'argument `--do-announce` (que la précédente annonce le fasse déjà ou pas ; "
+             "dans tous les cas, les membres du serveur ne seront pas notifiés). Pour épingler "
+             "automatiquement l'annonce, ajoutez l'argument `--pin` (si pas spécifié et si la "
+             "précédente annonce était épinglée, elle sera désépinglée).",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def announce(
+            self, context: commands.Context,
+            poll_id: int,
+            announce: str,
+            *, options=None
+    ):
+        message, channel, _, _, _, _, organizer = await self.get_message_env(
+            poll_id, raise_if_not_found=True
+        )
+
+        if organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
+        do_announce = utils.is_option_enabled(options, 'do-announce')
+        do_pin = utils.is_option_enabled(options, 'pin')
+        if do_announce or do_pin:
+            checker.has_any_mod_role(context, print_error=True)
+
+        prefixed_announce = utils.make_announce(
+            context, announce, do_announce and self.ANNOUNCE_ROLE_NAME
+        )
+        if do_pin and not message.pinned:
+            await message.pin()
+        elif not do_pin and message.pinned:
+            await message.unpin()
+        await message.edit(content=prefixed_announce)
+        await context.send(
+            f"Annonce du sondage d'identifiant `{poll_id}` remplacée par "
+            f"\"`{message.clean_content}`\" : <{message.jump_url}>"
+        )
+
+    @edit.command(
+        name='description',
+        aliases=['desc', 'd', 'message', 'm'],
+        usage="<poll_id> <\"description\">",
+        brief="Modifie la description du sondage",
+        help="La précédente description présente dans l'embed du sondage est remplacée par le "
+             "message fourni.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def description(self, context: commands.Context, poll_id: int, description: str):
+        message, channel, _, is_exclusive, required_role_name, time, organizer = \
+            await self.get_message_env(poll_id, raise_if_not_found=True)
+
+        if organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
+
+        embed = self.build_announce_embed(
+            description, is_exclusive, required_role_name, organizer, time, context.guild.roles)
+        await message.edit(embed=embed)
+        await context.send(
+            f"Description du sondage d'identifiant `{poll_id}` remplacée par "
+            f"\"`{description}`\" : <{message.jump_url}>"
+        )
+
+    @edit.command(
+        name='emojis',
+        aliases=['émojis', 'e'],
+        usage="<poll_id> <\":emoji1: :emoji2: ...\"> [--exclusive] [--role=\"name\"]",
+        brief="Modifie les émojis du sondage",
+        help="Les précédents émojis associés au sondage sont remplacés par le ou les émojis "
+             "fournis (entre guillemets et séparés par un espace). Par défaut, le sondage est à "
+             "choix multiple et il n'y a aucune restriction de rôle. Pour changer cela, il faut "
+             "respectivement ajouter les arguments `--exclusive` et `--role=\"Nom de rôle\"`. "
+             "Les réactions aux anciens émojis non repris ne sont pas prises en compte.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def emojis(
+            self, context: commands.Context,
+            poll_id: int,
+            emoji_list: converter.to_emoji_list,
+            *, options=None
+    ):
+        message, channel, previous_emoji_list, is_exclusive, required_role_name, time, organizer = \
+            await self.get_message_env(poll_id, raise_if_not_found=True)
+
+        if organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
+        if not emoji_list:
+            raise commands.MissingRequiredArgument(context.command.params['emoji_list'])
+        for emoji in emoji_list:
+            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
+                raise exceptions.ForbiddenEmoji(emoji)
+        required_role_name = utils.get_option_value(options, 'role')
+        if required_role_name:
+            utils.try_get(  # Raise if role does not exist
+                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
+                name=required_role_name
+            )
+
+        is_exclusive = utils.is_option_enabled(options, 'exclusive')
+        previous_reactions = [
+            utils.try_get(
+                message.reactions,
+                error=exceptions.MissingEmoji(previous_emoji),
+                emoji=previous_emoji
+            )
+            for previous_emoji in previous_emoji_list
+        ]
+        for previous_reaction in previous_reactions:
+            await previous_reaction.remove(zbot.bot.user)
+        for emoji in emoji_list:
+            await message.add_reaction(emoji)
+        embed = self.build_announce_embed(
+            message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
+            context.guild.roles
+        )
+        await message.edit(embed=embed)
+
+        job_id = self.pending_polls[message.id]['_id']
+        poll_data = {
+            'emoji_codes': list(map(lambda e: e if isinstance(e, str) else e.id, emoji_list)),
+            'is_exclusive': is_exclusive,
+            'required_role_name': required_role_name
+        }
+        zbot.db.update_job_data(self.JOBSTORE, job_id, poll_data)
+        self.pending_polls[message.id].update(poll_data)
+        await context.send(
+            f"Émojis du sondage d'identifiant `{poll_id}` mis à jour : <{message.jump_url}>"
+        )
+
+    @edit.command(
+        name='organizer',
+        aliases=['organisateur', 'org', 'o'],
+        usage="<poll_id> <@organizer>",
+        brief="Modifie l'organisateur du sondage",
+        help="Le précédent organisateur du sondage est remplacé par l'organisateur fourni.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def organizer(
+            self, context: commands.Context,
+            poll_id: int,
+            organizer: discord.User
+    ):
+        message, channel, emoji_list, is_exclusive, required_role_name, time, previous_organizer = \
+            await self.get_message_env(poll_id, raise_if_not_found=True)
+
+        if previous_organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
+
+        embed = self.build_announce_embed(
+            message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
+            context.guild.roles
+        )
+        await message.edit(embed=embed)
+
+        job_id = self.pending_polls[message.id]['_id']
+        poll_data = {'organizer_id': organizer.id}
+        zbot.db.update_job_data(self.JOBSTORE, job_id, poll_data)
+        self.pending_polls[message.id].update(poll_data)
+        await context.send(
+            f"Organisateur du sondage d'identifiant `{poll_id}` remplacé par "
+            f"`@{organizer.display_name}` : <{message.jump_url}>"
+        )
+
+    @edit.command(
+        name='time',
+        aliases=['date', 'heure', 't'],
+        usage="<poll_id> <\"time\">",
+        brief="Modifie la date et l'heure du sondage",
+        help="Le précédente date et heure du sondage sont changées pour celles fournies (au "
+             "format `\"YYYY-MM-DD HH:MM:SS\"`). ",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def time(
+            self, context: commands.Context,
+            poll_id: int,
+            time: converter.to_datetime
+    ):
+        message, channel, emoji_list, is_exclusive, required_role_name, _, organizer = \
+            await self.get_message_env(poll_id, raise_if_not_found=True)
+
+        if organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
+        if (time - utils.get_current_time()).total_seconds() <= 0:
+            argument_size = converter.humanize_datetime(time)
+            min_argument_size = converter.humanize_datetime(utils.get_current_time())
+            raise exceptions.UndersizedArgument(argument_size, min_argument_size)
+
+        embed = self.build_announce_embed(
+            message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
+            context.guild.roles
+        )
+        await message.edit(embed=embed)
+
+        job_id = self.pending_polls[message.id]['_id']
+        scheduler.reschedule_job(job_id, time)  # Also updates the next_run_time in db
+        poll_data = {'next_run_time': converter.to_timestamp(time)}
+        self.pending_polls[message.id].update(poll_data)
+        await context.send(
+            f"Date et heure du sondage d'identifiant `{poll_id}` changées pour le "
+            f"`{converter.humanize_datetime(time)}` : <{message.jump_url}>"
+        )
 
     @poll.command(
         name='cancel',

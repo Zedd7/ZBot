@@ -8,6 +8,12 @@ class ForbiddenEmoji(commands.CommandError):
         self.forbidden_emoji = forbidden_emoji
 
 
+class MisformattedArgument(commands.CommandError):
+    def __init__(self, argument, correct_format):
+        self.argument = argument
+        self.correct_format = correct_format
+
+
 class MissingClan(commands.CommandError):
     def __init__(self, player_name):
         self.player_name = player_name
