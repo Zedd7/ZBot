@@ -229,90 +229,65 @@ class Poll(_command.Command):
                             break
 
     @poll.command(
-        name='assess',
-        aliases=['a', 'close'],
-        usage="<#src_channel> <message_id> [\":emoji1: :emoji2: ...\"] [#dest_channel] "
-              "[@organizer] [--exclusive] [--role=\"name\"]",
-        brief="Évalue un sondage",
-        help="Le bot compte les votes du message source. Si le message est un sondage géré par le "
-             "bot, il se clôture à l'avance en donnant la priorité aux paramètres fournis sur les "
-             "paramètres originaux. Sinon, le canal de destination doit être fourni et est utilisé "
-             "pour y publier le compte des votes.",
+        name='list',
+        aliases=['l', 'ls'],
+        brief="Affiche la liste des sondages en cours",
         ignore_extra=False
     )
     @commands.check(checker.has_any_user_role)
-    async def assess(
-            self, context: commands.Context,
-            src_channel: discord.TextChannel,
-            message_id: int,
-            emoji_list: converter.to_emoji_list = (),
-            dest_channel: discord.TextChannel = None,
-            organizer: discord.User = None,
-            *, options=""
-    ):
-        for emoji in emoji_list:
-            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-                raise exceptions.ForbiddenEmoji(emoji)
-        if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
-        is_exclusive = utils.is_option_enabled(options, 'exclusive') or None  # Don't erase previous value
-        required_role_name = utils.get_option_value(options, 'role')
-        if required_role_name:
-            utils.try_get(  # Raise if role does not exist
-                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
-                name=required_role_name
-            )
-
-        message = await utils.try_get_message(
-            src_channel, message_id, error=exceptions.MissingMessage(message_id)
+    async def list(self, context: commands.Context):
+        poll_descriptions, guild_id = {}, context.guild.id
+        for message_id, poll_data in self.pending_polls.items():
+            poll_id = poll_data['poll_id']
+            channel_id = poll_data['channel_id']
+            organizer = context.guild.get_member(poll_data['organizer_id'])
+            time = scheduler.get_job_run_date(poll_data['_id'])
+            message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
+            poll_descriptions[poll_id] = f" • `[{poll_id}]` - Démarré par {organizer.mention} " \
+                                         f"jusqu'au [__{converter.humanize_datetime(time)}__]({message_link})"
+        embed_description = "Aucun" if not poll_descriptions \
+            else "\n".join([poll_descriptions[poll_id] for poll_id in sorted(poll_descriptions.keys())])
+        embed = discord.Embed(
+            title="Sondage(s) en cours",
+            description=embed_description,
+            color=self.EMBED_COLOR
         )
-        if message.author == self.user:  # Target message is a poll, close it now
-            job_id, poll_id, previous_organizer_id = (  # Backup values before they get deleted
-                self.pending_polls[message_id][key] for key in ('_id', 'poll_id', 'organizer_id')
-            )
-            if previous_organizer_id != context.author.id:
-                checker.has_any_mod_role(context, print_error=True)
-            await Poll.close_poll(
-                message_id,
-                emoji_codes=[emoji if isinstance(emoji, str) else emoji.id for emoji in emoji_list],
-                organizer_id=organizer and organizer.id,
-                is_exclusive_=is_exclusive,
-                required_role_name_=required_role_name,
-                manual_run=True,
-            )
-            await context.send(f"Sondage d'identifiant `{poll_id}` clôturé : <{message.jump_url}>")
-        else:  # Target message is not a poll, count votes from reactions
-            if not emoji_list:
-                raise exceptions.MissingConditionalArgument(
-                    "Une liste d'émojis doit être fournie si le message ciblé n'est pas un sondage.")
-            if not dest_channel:
-                raise exceptions.MissingConditionalArgument(
-                    "Un canal de destination doit être fourni si le message ciblé n'est pas un sondage.")
-            reactions, results = await Poll.count_votes(
-                message, src_channel, emoji_list, is_exclusive, required_role_name
-            )
-            announce = f"Évaluation des votes sur base des réactions au message {message.jump_url}"
-            await Poll.announce_results(
-                results, await context.send(announce), is_exclusive, required_role_name,
-                organizer=organizer, manual_run=True
-            )
+        await context.send(embed=embed)
+
+    @poll.command(
+        name='assess',
+        aliases=['a', 'close'],
+        usage="poll_id>",
+        brief="Évalue un sondage en cours",
+        help="Force un sondage à se terminer à l'avance.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def assess(self, context: commands.Context, poll_id: int):
+        message, _, _, _, _, _, organizer = await self.get_message_env(
+            poll_id, raise_if_not_found=True
+        )
+
+        if context.author.id != organizer:
+            checker.has_any_mod_role(context, print_error=True)
+
+        await Poll.close_poll(message.id, manual_run=True)
+        await context.send(f"Sondage d'identifiant `{poll_id}` clôturé : <{message.jump_url}>")
 
     @staticmethod
-    async def close_poll(
-            message_id, emoji_codes=(), organizer_id=None, is_exclusive_=None,
-            required_role_name_=None, manual_run=False):
+    async def close_poll(message_id, manual_run=False):
         poll_id = Poll.pending_polls[message_id]['poll_id']
         message, channel, emoji_list, is_exclusive, required_role_name, time, organizer = \
-            await Poll.get_message_env(
-                poll_id, emoji_codes, organizer_id, is_exclusive_, required_role_name_
-            )
+            await Poll.get_message_env(poll_id)
         try:
             reactions, results = await Poll.count_votes(
                 message, channel, emoji_list, is_exclusive, required_role_name)
             for reaction in reactions:
                 await reaction.remove(zbot.bot.user)
             await message.unpin()
-            await Poll.announce_results(results, message, is_exclusive, required_role_name, organizer)
+            await Poll.announce_results(
+                results, message, channel, is_exclusive, required_role_name, organizer
+            )
             Poll.remove_pending_poll(message_id, cancel_job=manual_run)
         except commands.CommandError as error:
             context = commands.Context(
@@ -323,6 +298,37 @@ class Poll(_command.Command):
                 message=message,
             )
             await error_handler.handle(context, error)
+
+    @poll.command(
+        name='cancel',
+        aliases=['c'],
+        usage="<poll_id>",
+        brief="Annule le sondage",
+        help="Le numéro de sondage est affiché entre crochets par la commande `+poll list`.",
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_user_role)
+    async def cancel(self, context: commands.Context, poll_id: int):
+        message, _, emoji_list, _, _, _, organizer = await self.get_message_env(
+            poll_id, raise_if_not_found=False)
+        if organizer != context.author:
+            checker.has_any_mod_role(context, print_error=True)
+        if message:
+            for emoji in emoji_list:
+                reaction = utils.try_get(
+                    message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji
+                )
+                await reaction.remove(zbot.bot.user)
+            embed = discord.Embed(
+                title=f"Sondage __annulé__ par {context.author.display_name}",
+                description=message.embeds[0].description if message.embeds[0].description else "",
+                color=Poll.EMBED_COLOR
+            )
+            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+            await message.edit(embed=embed)
+            await message.unpin()
+        self.remove_pending_poll(message.id, cancel_job=True)
+        await context.send(f"Sondage d'identifiant `{poll_id}` annulé.")
 
     @poll.group(
         name='edit',
@@ -555,41 +561,8 @@ class Poll(_command.Command):
             f"`{converter.humanize_datetime(time)}` : <{message.jump_url}>"
         )
 
-    @poll.command(
-        name='cancel',
-        aliases=['c'],
-        usage="<poll_id>",
-        brief="Annule le sondage",
-        help="Le numéro de sondage est affiché entre crochets par la commande `+poll list`.",
-        ignore_extra=False
-    )
-    @commands.check(checker.has_any_user_role)
-    async def cancel(self, context: commands.Context, poll_id: int):
-        message, _, emoji_list, _, _, _, organizer = await self.get_message_env(
-            poll_id, raise_if_not_found=False)
-        if organizer != context.author:
-            checker.has_any_mod_role(context, print_error=True)
-        if message:
-            for emoji in emoji_list:
-                reaction = utils.try_get(
-                    message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji
-                )
-                await reaction.remove(zbot.bot.user)
-            embed = discord.Embed(
-                title=f"Sondage __annulé__ par {context.author.display_name}",
-                description=message.embeds[0].description if message.embeds[0].description else "",
-                color=Poll.EMBED_COLOR
-            )
-            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
-            await message.edit(embed=embed)
-            await message.unpin()
-        self.remove_pending_poll(message.id, cancel_job=True)
-        await context.send(f"Sondage d'identifiant `{poll_id}` annulé.")
-
     @staticmethod
-    async def get_message_env(
-            poll_id: int, emoji_codes=(), organizer_id=None, is_exclusive_=None,
-            required_role_name_=None, raise_if_not_found=True) -> \
+    async def get_message_env(poll_id: int, raise_if_not_found=True) -> \
             (discord.Message, discord.TextChannel, typing.List[typing.Union[str, discord.Emoji]],
              bool, bool, datetime.datetime, discord.Member):
         if not (poll_data := discord.utils.find(
@@ -603,17 +576,16 @@ class Poll(_command.Command):
             error=exceptions.MissingMessage(poll_data['message_id']) if raise_if_not_found else None
         )
         emoji_list = []
-        for emoji_code in (emoji_codes or poll_data['emoji_codes']):
+        for emoji_code in poll_data['emoji_codes']:
             emoji = utils.try_get_emoji(zbot.bot.emojis, emoji_code, error=None)
             if emoji:
                 emoji_list.append(emoji)
             else:
                 logger.warning(f"Custom emoji with id `{emoji_code}` not found.")
-        is_exclusive = is_exclusive_ if is_exclusive_ is not None else poll_data['is_exclusive']
-        required_role_name = required_role_name_ if required_role_name_ is not None \
-            else poll_data['required_role_name']
+        is_exclusive = poll_data['is_exclusive']
+        required_role_name = poll_data['required_role_name']
         time = converter.from_timestamp(poll_data['next_run_time'])
-        organizer = zbot.bot.get_user(organizer_id or poll_data['organizer_id'])
+        organizer = zbot.bot.get_user(poll_data['organizer_id'])
         return message, channel, emoji_list, is_exclusive, required_role_name, time, organizer
 
     @staticmethod
@@ -633,30 +605,62 @@ class Poll(_command.Command):
         del Poll.pending_polls[message_id]
 
     @poll.command(
-        name='list',
-        aliases=['l', 'ls'],
-        brief="Affiche la liste des sondages en cours",
+        name='simulate',
+        aliases=['sim'],
+        usage="<#src_channel> <message_id> [\":emoji1: :emoji2: ...\"] [#dest_channel] "
+              "[--exclusive] [--role=\"name\"]",
+        brief="Simule un sondage",
+        help="Le bot compte les votes avec les émojis des réactions au message source s'il y en a, "
+             "avec les émojis fournis (entre guillemets et séparés par un espace) sinon. Si un "
+             "canal de destination est fourni, il est utilisé pour publier les résultats de la "
+             "simulation. Sinon, le canal courant est utilisé. Par défaut, le sondage est à choix "
+             "multiple et il n'y a aucune restriction de rôle. Pour changer cela, il faut "
+             "respectivement ajouter les arguments `--exclusive` et `--role=\"Nom de rôle\"`.",
         ignore_extra=False
     )
     @commands.check(checker.has_any_user_role)
-    async def list(self, context: commands.Context):
-        poll_descriptions, guild_id = {}, context.guild.id
-        for message_id, poll_data in self.pending_polls.items():
-            poll_id = poll_data['poll_id']
-            channel_id = poll_data['channel_id']
-            organizer = context.guild.get_member(poll_data['organizer_id'])
-            time = scheduler.get_job_run_date(poll_data['_id'])
-            message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
-            poll_descriptions[poll_id] = f" • `[{poll_id}]` - Démarré par {organizer.mention} " \
-                f"jusqu'au [__{converter.humanize_datetime(time)}__]({message_link})"
-        embed_description = "Aucun" if not poll_descriptions \
-            else "\n".join([poll_descriptions[poll_id] for poll_id in sorted(poll_descriptions.keys())])
-        embed = discord.Embed(
-            title="Sondage(s) en cours",
-            description=embed_description,
-            color=self.EMBED_COLOR
+    async def simulate(
+            self, context: commands.Context,
+            src_channel: discord.TextChannel,
+            message_id: int,
+            emoji_list: converter.to_emoji_list = (),
+            dest_channel: discord.TextChannel = None,
+            *, options=""
+    ):
+        for emoji in emoji_list:
+            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
+                raise exceptions.ForbiddenEmoji(emoji)
+        if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
+            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+        is_exclusive = utils.is_option_enabled(options, 'exclusive')
+        required_role_name = utils.get_option_value(options, 'role')
+        if required_role_name:
+            utils.try_get(  # Raise if role does not exist
+                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
+                name=required_role_name
+            )
+
+        message = await utils.try_get_message(
+            src_channel, message_id, error=exceptions.MissingMessage(message_id)
         )
-        await context.send(embed=embed)
+        if not emoji_list:
+            if len(message.reactions) == 0:
+                raise exceptions.MissingConditionalArgument(
+                    "Une liste d'émojis doit être fournie si le message ciblé n'a pas de réaction."
+                )
+            else:
+                emoji_list = [reaction.emoji for reaction in message.reactions]
+
+        reactions, results = await Poll.count_votes(
+            message, src_channel, emoji_list, is_exclusive, required_role_name
+        )
+        announcement = await (dest_channel or context).send(
+            "Évaluation des votes sur base des réactions."
+        )
+        await Poll.announce_results(
+            results, message, announcement.channel, is_exclusive, required_role_name,
+            dest_message=announcement
+        )
 
     @staticmethod
     async def count_votes(message, channel, emoji_list, is_exclusive, required_role_name):
@@ -685,12 +689,12 @@ class Poll(_command.Command):
 
     @staticmethod
     async def announce_results(
-            results: dict, message: discord.Message, is_exclusive, required_role_name,
-            organizer: discord.User = None, manual_run=False
+            results: dict, src_message: discord.Message, channel: discord.TextChannel, is_exclusive,
+            required_role_name, organizer: discord.User = None, dest_message: discord.Message = None
     ):
         announcement_embed = discord.Embed(
             title="Résultats du sondage",
-            description=f"[Cliquez ici pour accéder au sondage 🗳️]({message.jump_url})",
+            description=f"[Cliquez ici pour accéder au sondage 🗳️]({src_message.jump_url})",
             color=Poll.EMBED_COLOR
         )
         # Compute ranking of votes count: {votes_count: position, votes_count: position, ...}
@@ -708,21 +712,23 @@ class Poll(_command.Command):
         if organizer:
             announcement_embed.set_author(
                 name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
-        announcement = await message.channel.send(embed=announcement_embed)
+        if dest_message:  # Poll simulation
+            await dest_message.edit(embed=announcement_embed)
+        else:  # Assessment of a poll
+            dest_message = await channel.send(embed=announcement_embed)
 
-        if not manual_run:
             embed = discord.Embed(
                 title="Sondage clôturé",
-                description=f"[Cliquez ici pour accéder aux résultats 📊]({announcement.jump_url})"
-                            + (f"\n\n{message.embeds[0].description}"
-                               if message.embeds[0].description else ""),
+                description=f"[Cliquez ici pour accéder aux résultats 📊]({dest_message.jump_url})"
+                            + (f"\n\n{src_message.embeds[0].description}"
+                               if src_message.embeds[0].description else ""),
                 color=Poll.EMBED_COLOR
             )
             embed.add_field(name="Choix multiple", value="✅" if not is_exclusive else "❌")
             embed.add_field(
                 name="Rôle requis",
                 value=utils.try_get(
-                    message.guild.roles,
+                    src_message.guild.roles,
                     error=exceptions.UnknownRole(required_role_name),
                     name=required_role_name
                 ).mention if required_role_name else "Aucun"
@@ -730,7 +736,7 @@ class Poll(_command.Command):
             if organizer:
                 embed.set_author(
                     name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
-            await message.edit(embed=embed)
+            await src_message.edit(embed=embed)
 
         logger.debug(f"Poll results: {results}")
 

@@ -13,7 +13,7 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.4.2'
+__version__ = '1.4.3'
 
 dotenv.load_dotenv()
 

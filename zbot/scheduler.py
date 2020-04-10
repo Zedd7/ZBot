@@ -15,7 +15,7 @@ scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 
 def setup(db: database.MongoDBConnector):
     for collection_name in dict(filter(lambda i: i[1].get('is_jobstore'), db.COLLECTIONS_CONFIG.items())):
-        jobstore = MongoDBJobStore(database=db.DATABASE_NAME, collection=collection_name, client=db.client)
+        jobstore = MongoDBJobStore(database=db.database_name, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
     logger.debug(f"Loaded {len(scheduler.get_jobs())} job(s): "

@@ -12,7 +12,6 @@ from . import logger
 
 class MongoDBConnector:
 
-    DATABASE_NAME = 'zbot'
     RECRUITMENT_ANNOUNCES_COLLECTION = 'recruitment_announce'
     PENDING_LOTTERIES_COLLECTION = 'pending_lottery'
     PENDING_POLLS_COLLECTION = 'pending_poll'
@@ -27,34 +26,33 @@ class MongoDBConnector:
         self.connected = False
         self.database = None
         self.collections = {}
+        self.database_host = os.getenv('MONGODB_DATABASE_HOST')
+        self.database_name = os.getenv('MONGODB_DATABASE_NAME')
+
+        if not self.database_host:
+            raise ConnectionFailure(
+                "No MongoDB host found in .env file under the key 'MONGODB_HOST'."
+            )
+        if not self.database_name:
+            raise ConnectionFailure(
+                "No MongoDB database name found in .env file under the key 'MONGODB_DATABASE_NAME'."
+            )
 
     def open_connection(self):
         try:
-            username = os.getenv('MONGODB_USERNAME')
-            if not username:
-                raise ConnectionFailure(
-                    "No MongoDB username found in .env file under the key 'MONGODB_USERNAME'."
-                )
-            password = os.getenv('MONGODB_PASSWORD')
-            if not password:
-                raise ConnectionFailure(
-                    "No MongoDB password found in .env file under the key 'MONGODB_PASSWORD'."
-                )
-
-            self.client = pymongo.MongoClient(f'mongodb+srv://{username}:{password}'
-                                              f'@zbot-5waud.gcp.mongodb.net/test?retryWrites=true')
+            self.client = pymongo.MongoClient(self.database_host + '?retryWrites=true')
             self.client.admin.command('ismaster')  # Check if connected and raises ConnectionFailure if not
-            logger.debug(f"Connected to MongoDB database '{self.DATABASE_NAME}'.")
+            logger.debug(f"Connected to MongoDB database '{self.database_name}'.")
             self.connected = True
 
-            self.database = self.client[self.DATABASE_NAME]
+            self.database = self.client[self.database_name]
             for collection_name in self.COLLECTIONS_CONFIG.keys():
                 self.collections[collection_name] = self.database[collection_name]
             logger.debug(f"Loaded {len(self.collections)} collection(s).")
 
         except ConnectionFailure:
             logger.error(
-                f"Could not connect to MongoDB database '{self.DATABASE_NAME}'.", exc_info=True
+                f"Could not connect to MongoDB database '{self.database_name}'.", exc_info=True
             )
 
         return self.connected
