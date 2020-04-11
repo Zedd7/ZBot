@@ -1,7 +1,7 @@
 apscheduler
 asyncio
 dnspython
-discord.py>=1.3.2
+discord.py>=1.3.3
 emojis
 flask
 pymongo

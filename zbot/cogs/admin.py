@@ -1,10 +1,8 @@
 import datetime
-import os
 import re
 import sys
 from copy import copy
 
-import requests
 from discord.ext import commands
 
 from zbot import checker
@@ -12,6 +10,7 @@ from zbot import converter
 from zbot import exceptions
 from zbot import logger
 from zbot import utils
+from zbot import wot_utils
 from zbot import zbot
 from . import _command
 from .stats import Stats
@@ -38,9 +37,12 @@ class Admin(_command.Command):
 
     def __init__(self, bot):
         super().__init__(bot)
-        self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'
-        recruitment_channel = bot.get_channel(self.RECRUITMENT_CHANNEL_ID)
-        bot.loop.create_task(zbot.db.update_recruitment_announces(recruitment_channel))
+        bot.loop.create_task(self.record_recruitment_announces())
+
+    async def record_recruitment_announces(self):
+        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        recruitment_announces = await recruitment_channel.history().flatten()
+        zbot.db.update_recruitment_announces(recruitment_announces)
 
     @commands.group(
         name='check',
@@ -84,11 +86,11 @@ class Admin(_command.Command):
     async def check_everyone(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
-        await self.check_everyone_role(context, context.guild.members)
-        await self.check_everyone_clan_tag(context, context.guild.members)
+        await self.check_everyone_role(context, self.guild.members)
+        await self.check_everyone_clan_tag(context, self.guild.members)
 
-        add_reaction and context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        add_reaction and context.message.add_reaction(self.WORK_DONE_EMOJI)
+        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
+        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
 
     @staticmethod
     async def check_everyone_role(context, members):
@@ -109,7 +111,7 @@ class Admin(_command.Command):
         """Check that no member has an unauthorized clan tag."""
         unauthorized_clan_tag_members = []
         for member in members:
-            if re.search(r' *[\[{].{2,5}[\]}] *', member.display_name) and \
+            if re.search(r'[ ]*[\[{].{2,5}[\]}][ ]*', member.display_name) and \
                     not checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
                 unauthorized_clan_tag_members.append(member)
         if unauthorized_clan_tag_members:
@@ -136,7 +138,7 @@ class Admin(_command.Command):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
         members = []
-        for member in context.guild.members:
+        for member in self.guild.members:
             if checker.has_role(member, self.PLAYER_ROLE_NAME):
                 members.append(member)
 
@@ -148,50 +150,43 @@ class Admin(_command.Command):
 
     @staticmethod
     async def check_players_matching_name(context, members, app_id):
-        """Check that all players have a matching player name on WoT."""
+        """Check that all players have a name matching with a player in WoT."""
+        lower_case_matching_names = [
+            name.lower() for name in wot_utils.get_players_info(
+                [member.display_name for member in members], app_id
+            ).keys()
+        ]
 
-        def _batch(_array, _batch_size):
-            """ Split an array into an iterable of constant-size batches. """
-            for _i in range(0, len(_array), _batch_size):
-                yield _array[_i:_i+_batch_size]
+        nonmatching_members = []
+        for member in members:
+            # Parse member name as player name with optional clan tag
+            result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+            if result:  # Member name fits, check if it has a match
+                player_name = result.group(1)
+                if player_name.lower() not in lower_case_matching_names:
+                    nonmatching_members.append(member)
+            else:  # Member name malformed, reject
+                nonmatching_members.append(member)
 
-        unmatched_name_members = []
-        for member_batch in _batch(members, Admin.BATCH_SIZE):
-            # Replace forbidden characters in player names
-            member_names = [re.sub(r'[^0-9a-zA-Z_]', r'', member.display_name.split(' ')[0]) for member in member_batch]
-            # Exclude fully non-matching (empty) names
-            member_names = filter(lambda name: name != '', member_names)
-            payload = {
-                'application_id': app_id,
-                'search': ','.join(member_names),
-                'type': 'exact',
-            }
-            response = requests.get('https://api.worldoftanks.eu/wot/account/list/', params=payload)
-            response_content = response.json()
-            matched_names = [
-                player_data['nickname'] for player_data in response_content['data']
-            ] if response_content['status'] == 'ok' else []
-            unmatched_name_members += list(filter(
-                lambda m: m.display_name.split(' ')[0].lower() not in [
-                    matched_name.lower() for matched_name in matched_names
-                ], member_batch))
-        if unmatched_name_members:
+        if nonmatching_members:
             for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} n'a pas de correspondance de pseudo sur WoT."
-                for member in unmatched_name_members
+                for member in nonmatching_members
             ]):
                 await context.send(block)
         else:
             await context.send("Tous les joueurs ont une correspondance de pseudo sur WoT. :ok_hand: ")
-        return unmatched_name_members
+        return nonmatching_members
 
     @staticmethod
     async def check_players_unique_name(context, members):
         """Check that all players have a unique verified nickname."""
         members_by_name = {}
         for member in members:
-            member_name = member.display_name.split(' ')[0]
-            members_by_name.setdefault(member_name, []).append(member)
+            result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+            if result:  # Malformed member names handled by check_players_matching_name
+                member_name = result.group(1)
+                members_by_name.setdefault(member_name, []).append(member)
         if duplicate_name_members := dict(filter(lambda i: len(i[1]) > 1, members_by_name.items())):
             for block in utils.make_message_blocks([
                 f"Le pseudo vérifié **{member_name}** est utilisé par : "
@@ -218,16 +213,15 @@ class Admin(_command.Command):
     async def check_contacts(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
-        contacts_by_clan = {}
-        for member in context.guild.members:
+        contacts, contacts_by_clan = [], {}
+        for member in self.guild.members:
             if checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
-                clan_tag = member.display_name.split(' ')[-1]
-                # Remove clan tag delimiters
-                replacements = {(re.escape(char)): '' for char in ['[', ']']}
-                pattern = re.compile('|'.join(replacements.keys()))
-                clan_tag = pattern.sub(lambda m: replacements[re.escape(m.group(0))], clan_tag)
-                contacts_by_clan.setdefault(clan_tag, []).append(member)
-        contacts = set([contact for contacts in contacts_by_clan.values() for contact in contacts])
+                contacts.append(member)
+                result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+                if result:  # Malformed member names handled by check_players_matching_name
+                    clan_tag = result.group(3)
+                    if clan_tag:  # Missing clan tag handled by check_contacts_clan_tag
+                        contacts_by_clan.setdefault(clan_tag, []).append(member)
 
         await self.check_contacts_clan_tag(context, contacts)
         await self.check_clans_single_contact(context, contacts_by_clan)
@@ -239,7 +233,12 @@ class Admin(_command.Command):
     @staticmethod
     async def check_contacts_clan_tag(context, contacts):
         """Check that all contacts have a clan tag."""
-        if missing_clan_tag_members := list(filter(lambda c: ' ' not in c.display_name, contacts)):
+        missing_clan_tag_members = []
+        for contact in contacts:
+            result = utils.PLAYER_NAME_PATTERN.match(contact.display_name)
+            if not result or not result.group(3):
+                missing_clan_tag_members.append(contact)
+        if missing_clan_tag_members:
             for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} n'arbore pas de tag de clan."
                 for member in missing_clan_tag_members
@@ -269,19 +268,21 @@ class Admin(_command.Command):
         disbanded_members, demoted_members = [], []
         for clan_tag, contacts in contacts_by_clan.items():
             for member in contacts:
-                if ' ' in member.display_name:  # Missing clan tag handled by Admin.check_contacts_clan_tag
-                    player_name = member.display_name.split(' ')[0]
-                    player_id, _ = await Stats.get_player_id(player_name, app_id)
+                result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+                if result:  # Malformed member names handled by check_players_matching_name
+                    player_name = result.group(1)
+                    _, player_id = wot_utils.get_exact_player_info(player_name, app_id)
                     if player_id:  # Non-matching name handled by Admin.check_players_matching_name
-                        clan_member_infos = await Stats.get_clan_member_infos(player_id, app_id)
+                        clan_member_infos = wot_utils.get_clan_member_infos(player_id, app_id)
                         real_clan_tag = clan_member_infos and clan_member_infos['tag']
                         clan_position = clan_member_infos and clan_member_infos['position']
                         if not clan_member_infos or real_clan_tag != clan_tag.upper():
                             disbanded_members.append((member, clan_tag))
-                        elif clan_position not in ["Commandant", "Commandant en second", "Officier du personnel", "Recruteur"]:
+                        elif clan_position not in [
+                            "Commandant", "Commandant en second",
+                            "Officier du personnel", "Recruteur"
+                        ]:
                             demoted_members.append((member, real_clan_tag))
-                            await context.send(f"Le joueur {member.mention} n'a plus les permissions "
-                                               f"de recrutement au sein du clan [{real_clan_tag}].")
         if disbanded_members:
             for block in utils.make_message_blocks([
                 f"Le joueur {member.mention} a quitté le clan [{clan_tag}]."
@@ -290,12 +291,14 @@ class Admin(_command.Command):
                 await context.send(block)
         if demoted_members:
             for block in utils.make_message_blocks([
-                f"Le joueur {member.mention} n'a plus les permissions de recrutement au sein du clan [{real_clan_tag}]."
-                for member, real_clan_tag in demoted_members
+                f"Le joueur {member.mention} n'a pas les permissions de recrutement au sein du "
+                f"clan [{real_clan_tag}]." for member, real_clan_tag in demoted_members
             ]):
                 await context.send(block)
         if not disbanded_members and not demoted_members:
-            await context.send("Tous les contacts de clan ont encore leurs permissions de recrutement. :ok_hand: ")
+            await context.send(
+                "Tous les contacts de clan ont encore leurs permissions de recrutement. :ok_hand: "
+            )
         return disbanded_members, demoted_members
 
     @check.command(
@@ -330,7 +333,7 @@ class Admin(_command.Command):
 
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
-        recruitment_channel = context.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         recruitment_announces = await recruitment_channel.history(
             after=after.replace(tzinfo=None),
             limit=limit,
@@ -441,7 +444,7 @@ class Admin(_command.Command):
     @staticmethod
     async def check_recruitment_announces_timespan(context, channel, announces):
         """Check that no announce is re-posted before a given timespan."""
-        await zbot.db.update_recruitment_announces(channel)
+        zbot.db.update_recruitment_announces(await channel.history().flatten())
 
         # Get records of all deleted announces.
         # Still existing announce handled by Admin.check_recruitment_announces_uniqueness
@@ -510,7 +513,7 @@ class Admin(_command.Command):
     )
     @commands.check(checker.has_any_mod_role)
     async def report_recruitment(self, context, announce_id: int):
-        recruitment_channel = context.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         recruitment_announce = await utils.try_get_message(
             recruitment_channel, announce_id, error=exceptions.MissingMessage(announce_id)
         )

@@ -13,7 +13,7 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.4.3'
+__version__ = '1.5.0'
 
 dotenv.load_dotenv()
 
@@ -23,6 +23,7 @@ COGS = [
     'zbot.cogs.info',
     'zbot.cogs.lottery',
     'zbot.cogs.poll',
+    'zbot.cogs.messaging',
     'zbot.cogs.stats',
 ]
 
@@ -34,8 +35,9 @@ def get_prefix(client, message):
 
 bot = commands.Bot(
     command_prefix=get_prefix,
+    case_insensitive=True,
+    help_command=None,
     owner_id=OWNER_ID,
-    case_insensitive=True
 )
 
 db = database.MongoDBConnector()
@@ -44,7 +46,6 @@ db = database.MongoDBConnector()
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user}.")
-    bot.remove_command('help')
     db.open_connection()
     for cog in COGS:
         try:

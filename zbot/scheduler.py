@@ -8,7 +8,8 @@ from . import database
 from . import logger
 from . import utils
 
-MISFIRE_GRACE_TIME = int(timedelta(days=2).total_seconds())
+STORED_JOB_MISFIRE_GRACE_TIME = int(timedelta(days=2).total_seconds())
+VOLATILE_JOB_MISFIRE_GRACE_TIME = int(timedelta(hours=3).total_seconds())
 
 scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 
@@ -22,25 +23,32 @@ def setup(db: database.MongoDBConnector):
                  f"{', '.join([job.id for job in scheduler.get_jobs()])}")
 
 
-def get_job_run_date(job_id):
-    return scheduler.get_job(job_id).next_run_time
-
-
-# Jobstores
-
-def schedule_job(collection_name, time, callback, *args):
-    job_trigger = DateTrigger(run_date=time)
+def schedule_stored_job(collection_name, time, callback, *args):
     job = scheduler.add_job(
         func=callback,
-        trigger=job_trigger,
         args=args,
         jobstore=collection_name,
-        misfire_grace_time=MISFIRE_GRACE_TIME,
-        coalesce=False,
+        misfire_grace_time=STORED_JOB_MISFIRE_GRACE_TIME,
+        next_run_time=time,
         replace_existing=True
     )
-    logger.debug(f"Scheduled new job of id {job.id} : {job}")
+    logger.debug(f"Scheduled new stored job of id {job.id} : {job}")
     return job
+
+
+def schedule_volatile_job(time, callback, *args):
+    job = scheduler.add_job(
+        func=callback,
+        args=args,
+        misfire_grace_time=VOLATILE_JOB_MISFIRE_GRACE_TIME,
+        next_run_time=time,
+        replace_existing=True
+    )
+    return job
+
+
+def get_job_run_date(job_id):
+    return scheduler.get_job(job_id).next_run_time
 
 
 def reschedule_job(job_id, time):

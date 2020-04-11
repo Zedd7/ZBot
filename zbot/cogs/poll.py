@@ -102,7 +102,7 @@ class Poll(_command.Command):
         required_role_name = utils.get_option_value(options, 'role')
         if required_role_name:
             utils.try_get(  # Raise if role does not exist
-                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
+                self.guild.roles, error=exceptions.UnknownRole(required_role_name),
                 name=required_role_name
             )
 
@@ -110,9 +110,9 @@ class Poll(_command.Command):
         is_exclusive = utils.is_option_enabled(options, 'exclusive')
         organizer = context.author
         prefixed_announce = utils.make_announce(
-            context, announce, do_announce and self.ANNOUNCE_ROLE_NAME)
+            context.guild, announce, do_announce and self.ANNOUNCE_ROLE_NAME)
         embed = self.build_announce_embed(
-            description, is_exclusive, required_role_name, organizer, time, context.guild.roles)
+            description, is_exclusive, required_role_name, organizer, time, self.guild.roles)
         message = await dest_channel.send(prefixed_announce, embed=embed)
         for emoji in emoji_list:
             await message.add_reaction(emoji)
@@ -120,7 +120,7 @@ class Poll(_command.Command):
             await message.pin()
 
         # Register data
-        job_id = scheduler.schedule_job(self.JOBSTORE, time, self.close_poll, message.id).id
+        job_id = scheduler.schedule_stored_job(self.JOBSTORE, time, self.close_poll, message.id).id
         poll_data = {
             'poll_id': self.get_next_poll_id(),
             'message_id': message.id,
@@ -192,7 +192,7 @@ class Poll(_command.Command):
             ])
             if same_emoji and not user.bot:
                 if required_role_name := Poll.pending_polls[message_id]['required_role_name']:
-                    if not checker.has_guild_role(message.channel.guild, user, required_role_name):
+                    if not checker.has_guild_role(self.guild, user, required_role_name):
                         try:
                             await utils.try_dm(
                                 user, f"Vous devez avoir le rôle @{required_role_name} pour "
@@ -236,11 +236,11 @@ class Poll(_command.Command):
     )
     @commands.check(checker.has_any_user_role)
     async def list(self, context: commands.Context):
-        poll_descriptions, guild_id = {}, context.guild.id
+        poll_descriptions, guild_id = {}, self.guild.id
         for message_id, poll_data in self.pending_polls.items():
             poll_id = poll_data['poll_id']
             channel_id = poll_data['channel_id']
-            organizer = context.guild.get_member(poll_data['organizer_id'])
+            organizer = self.guild.get_member(poll_data['organizer_id'])
             time = scheduler.get_job_run_date(poll_data['_id'])
             message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
             poll_descriptions[poll_id] = f" • `[{poll_id}]` - Démarré par {organizer.mention} " \
@@ -281,7 +281,7 @@ class Poll(_command.Command):
             await Poll.get_message_env(poll_id)
         try:
             reactions, results = await Poll.count_votes(
-                message, channel, emoji_list, is_exclusive, required_role_name)
+                message, emoji_list, is_exclusive, required_role_name)
             for reaction in reactions:
                 await reaction.remove(zbot.bot.user)
             await message.unpin()
@@ -374,7 +374,7 @@ class Poll(_command.Command):
             checker.has_any_mod_role(context, print_error=True)
 
         prefixed_announce = utils.make_announce(
-            context, announce, do_announce and self.ANNOUNCE_ROLE_NAME
+            context.guild, announce, do_announce and self.ANNOUNCE_ROLE_NAME
         )
         if do_pin and not message.pinned:
             await message.pin()
@@ -406,7 +406,7 @@ class Poll(_command.Command):
             raise commands.MissingPermissions([f"`send_messages` in {channel.mention}"])
 
         embed = self.build_announce_embed(
-            description, is_exclusive, required_role_name, organizer, time, context.guild.roles)
+            description, is_exclusive, required_role_name, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
         await context.send(
             f"Description du sondage d'identifiant `{poll_id}` remplacée par "
@@ -447,7 +447,7 @@ class Poll(_command.Command):
         required_role_name = utils.get_option_value(options, 'role')
         if required_role_name:
             utils.try_get(  # Raise if role does not exist
-                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
+                self.guild.roles, error=exceptions.UnknownRole(required_role_name),
                 name=required_role_name
             )
 
@@ -466,7 +466,7 @@ class Poll(_command.Command):
             await message.add_reaction(emoji)
         embed = self.build_announce_embed(
             message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
-            context.guild.roles
+            self.guild.roles
         )
         await message.edit(embed=embed)
 
@@ -506,7 +506,7 @@ class Poll(_command.Command):
 
         embed = self.build_announce_embed(
             message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
-            context.guild.roles
+            self.guild.roles
         )
         await message.edit(embed=embed)
 
@@ -548,7 +548,7 @@ class Poll(_command.Command):
 
         embed = self.build_announce_embed(
             message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
-            context.guild.roles
+            self.guild.roles
         )
         await message.edit(embed=embed)
 
@@ -636,7 +636,7 @@ class Poll(_command.Command):
         required_role_name = utils.get_option_value(options, 'role')
         if required_role_name:
             utils.try_get(  # Raise if role does not exist
-                context.guild.roles, error=exceptions.UnknownRole(required_role_name),
+                self.guild.roles, error=exceptions.UnknownRole(required_role_name),
                 name=required_role_name
             )
 
@@ -652,7 +652,7 @@ class Poll(_command.Command):
                 emoji_list = [reaction.emoji for reaction in message.reactions]
 
         reactions, results = await Poll.count_votes(
-            message, src_channel, emoji_list, is_exclusive, required_role_name
+            message, emoji_list, is_exclusive, required_role_name
         )
         announcement = await (dest_channel or context).send(
             "Évaluation des votes sur base des réactions."
@@ -663,7 +663,7 @@ class Poll(_command.Command):
         )
 
     @staticmethod
-    async def count_votes(message, channel, emoji_list, is_exclusive, required_role_name):
+    async def count_votes(message, emoji_list, is_exclusive, required_role_name):
         """Count the votes and compute the results of the poll."""
         reactions = [
             utils.try_get(message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji)
@@ -680,7 +680,7 @@ class Poll(_command.Command):
                                          if other_emoji != emoji]):
                     continue  # Only count vote of voters having voted once in exclusive mode
                 if required_role_name and not checker.has_guild_role(
-                        channel.guild, voter, required_role_name
+                        message.guild, voter, required_role_name
                 ):
                     continue  # Only count vote of voters having the required role, if set
                 valid_votes_count += 1

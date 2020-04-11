@@ -1,14 +1,11 @@
 import datetime
 import http
-import json
-import pathlib
 import re
 import shlex
 import typing
 
 import discord
 import pytz
-import requests
 from discord.ext import commands
 
 from . import exceptions
@@ -16,6 +13,11 @@ from . import logger
 
 TIMEZONE = pytz.timezone('Europe/Brussels')
 MAX_MESSAGE_LENGTH = 2000
+PLAYER_NAME_PATTERN = re.compile(
+    r'^(\w+)'  # One-word player name
+    r'([ ]\[([\w-]{2,5})\])?'  # Space-separated clan tag between square brackets
+    r'([ ](🕯+))?$'  # Space-separated arbitrary repetition of an emoji
+)
 
 
 # Command manipulations
@@ -78,8 +80,17 @@ def get_commands(context, command_chain: typing.List[str], command_name: str) ->
 
 # Printers
 
-def make_user_list(users: typing.List[discord.User], mention=True, separator=", "):
-    return separator.join(user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users)
+def make_user_list(users: typing.List[discord.User], mention=True, separator=", ") -> str:
+    """
+    Build a list of user names separated by a given separator.
+    :param users: The list of users
+    :param mention: Whether the names should be mentions or follow the format @name#discrim
+    :param separator: The separator to insert between name, space included
+    :return: A string of the list of users
+    """
+    return separator.join([
+        user.mention if mention else f"@{user.name}#{user.discriminator}" for user in users
+    ])
 
 
 def make_message_blocks(messages: [str], separator: str = "\n"):
@@ -97,32 +108,15 @@ def make_message_blocks(messages: [str], separator: str = "\n"):
     return blocks
 
 
-def make_announce(context, announce: str, announce_role_name: str = None) -> str:
+def make_announce(guild, announce: str, announce_role_name: str = None) -> str:
     """Prefix the announce with the mention of the announce role, if any."""
     if announce_role_name:
-        announce_role = try_get(context.guild.roles, error=exceptions.UnknownRole(announce_role_name), name=announce_role_name)
+        announce_role = try_get(
+            guild.roles, error=exceptions.UnknownRole(announce_role_name), name=announce_role_name
+        )
         return f"{announce_role.mention} {announce}"
     else:
         return announce
-
-
-# WoT data manipulations
-
-def parse_player(context, player):
-    # Try to cast player name as Discord guild member
-    if not player:
-        player = context.guild.get_member(context.author.id)
-    elif not isinstance(player, discord.Member):
-        player = context.guild.get_member_named(player) or player
-    # Parse Wot account name
-    if isinstance(player, discord.Member):
-        if player.nick:  # Use nickname if set
-            player_name = player.nick.split(' ')[0]  # Remove clan tag
-        else:  # Else use username
-            player_name = player.display_name.split(' ')[0]  # Remove clan tag
-    else:
-        player_name = player
-    return player, player_name
 
 
 # Safe utilities
@@ -191,45 +185,35 @@ async def try_dms(user: discord.User, messages: typing.List[str], group_in_block
     return result
 
 
+# Parsers
+
+def parse_player(guild, player: typing.Union[discord.Member, str], fallback: discord.Member):
+    """
+    Parse a name as a WoT player name. The name can be empty, the username of a member or the
+    nickname of a member, and can have a clan tag.
+    :param: guild: The Discord guild of the bot
+    :param: player: The name to parse
+    :param: fallback: The member whose name to use if none was provided
+    """
+    # Try to cast player name as Discord guild member
+    if not player:
+        player = guild.get_member(fallback.id)
+    elif not isinstance(player, discord.Member):
+        player = guild.get_member_named(player) or player
+
+    # Parse Wot account name
+    if isinstance(player, discord.Member):
+        result = PLAYER_NAME_PATTERN.match(player.display_name)
+        player_name = result.group(1)
+    else:
+        player_name = player
+    return player, player_name
+
+
 # Miscellaneous
 
 def get_current_time():
     return datetime.datetime.now(TIMEZONE)
-
-
-def get_exp_values(exp_values_file_path: pathlib.Path, exp_values_file_url) -> dict or None:
-    """
-    Download or load the last version of expected WN8 values.
-    On Heroku, the file storing expected WN8 values gets deleted automatically when the bot shuts down.
-    """
-    exp_values_json = None
-    exp_values_file_path.parent.mkdir(parents=True, exist_ok=True)
-    if not exp_values_file_path.exists():
-        response = requests.get(exp_values_file_url)
-        if response.ok:
-            with exp_values_file_path.open(mode='w') as exp_values_file:
-                exp_values_file.write(response.text)
-                exp_values_json = response.json()
-            logger.debug(f"Could not find {exp_values_file_path.name}, created it.")
-        else:
-            logger.warning(f"Could not reach {exp_values_file_url} - "
-                           f"Skipped loading of expected WN8 values.")
-    else:
-        with exp_values_file_path.open(mode='r') as exp_values_file:
-            exp_values_json = json.load(exp_values_file)
-        logger.debug(f"Loaded expected WN8 values from {exp_values_file_path.name}.")
-
-    if exp_values_json:
-        exp_values = {}
-        for tank_data in exp_values_json['data']:
-            exp_values[tank_data['IDNum']] = {
-                'damage_ratio': tank_data['expDamage'],
-                'spot_ratio': tank_data['expSpot'],
-                'kill_ratio': tank_data['expFrag'],
-                'defense_ratio': tank_data['expDef'],
-                'win_ratio': tank_data['expWinRate'],
-            }
-        return exp_values
 
 
 def is_option_enabled(options: str, option_name: str) -> bool:
@@ -270,3 +254,14 @@ def remove_option(options: str, option_name: str) -> str:
     """
     p = re.compile(rf'--{option_name}+(=\w+)?')
     return re.sub(p, '', options).rstrip()
+
+
+def sanitize_player_names(member_names):
+    """Filter out member names that do not follow either the `player` or `player [CLAN]` pattern."""
+    sanitized_player_names = []
+    for member_name in member_names:
+        result = PLAYER_NAME_PATTERN.match(member_name)
+        if result:
+            sanitized_player_name = result.group(1)
+            sanitized_player_names.append(sanitized_player_name)
+    return sanitized_player_names
