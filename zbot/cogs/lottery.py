@@ -94,13 +94,15 @@ class Lottery(_command.Command):
         # Run command
         organizer = context.author
         do_announce = not utils.is_option_enabled(options, 'no-announce')
-        prefixed_announce = utils.make_announce(context, announce, do_announce and self.ANNOUNCE_ROLE_NAME)
-        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, context.guild.roles)
+        prefixed_announce = utils.make_announce(
+            context.guild, announce, do_announce and self.ANNOUNCE_ROLE_NAME
+        )
+        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         message = await dest_channel.send(prefixed_announce, embed=embed)
         await message.add_reaction(emoji)
 
         # Register data
-        job_id = scheduler.schedule_job(self.JOBSTORE, time, self.run_lottery, message.id).id
+        job_id = scheduler.schedule_stored_job(self.JOBSTORE, time, self.run_lottery, message.id).id
         lottery_data = {
             'lottery_id': self.get_next_lottery_id(),
             'message_id': message.id,
@@ -163,7 +165,7 @@ class Lottery(_command.Command):
             same_emoji = emoji == lottery_emoji_code if isinstance(emoji, str) else emoji.id == lottery_emoji_code
             if same_emoji and \
                     not user.bot and \
-                    not checker.has_any_role(message.channel.guild, user, Lottery.USER_ROLE_NAMES):
+                    not checker.has_any_role(self.guild, user, Lottery.USER_ROLE_NAMES):
                 try:
                     await utils.try_dm(
                         user, f"Vous devez avoir le rôle @{Lottery.USER_ROLE_NAMES[0]} pour "
@@ -185,11 +187,11 @@ class Lottery(_command.Command):
     )
     @commands.check(checker.has_any_user_role)
     async def list(self, context: commands.Context):
-        lottery_descriptions, guild_id = {}, context.guild.id
+        lottery_descriptions, guild_id = {}, self.guild.id
         for message_id, lottery_data in self.pending_lotteries.items():
             lottery_id = lottery_data['lottery_id']
             channel_id = lottery_data['channel_id']
-            organizer = context.guild.get_member(lottery_data['organizer_id'])
+            organizer = self.guild.get_member(lottery_data['organizer_id'])
             time = scheduler.get_job_run_date(lottery_data['_id'])
             message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
             lottery_descriptions[lottery_id] = f" • `[{lottery_id}]` - Programmé par {organizer.mention} " \
@@ -232,7 +234,7 @@ class Lottery(_command.Command):
         )
         try:
             players, reaction, winners = await Lottery.draw(
-                message, channel, emoji, nb_winners, seed
+                message, emoji, nb_winners, seed
             )
             await reaction.remove(zbot.bot.user)
             await Lottery.announce_winners(winners, players, message, organizer)
@@ -311,7 +313,9 @@ class Lottery(_command.Command):
             checker.has_any_mod_role(context, print_error=True)
 
         do_announce = not utils.is_option_enabled(options, 'no-announce')
-        prefixed_announce = utils.make_announce(context, announce, do_announce and self.ANNOUNCE_ROLE_NAME)
+        prefixed_announce = utils.make_announce(
+            context.guild, announce, do_announce and self.ANNOUNCE_ROLE_NAME
+        )
         await message.edit(content=prefixed_announce)
         await context.send(
             f"Annonce du tirage au sort d'identifiant `{lottery_id}` remplacée par "
@@ -346,7 +350,7 @@ class Lottery(_command.Command):
         )
         await previous_reaction.remove(zbot.bot.user)
         await message.add_reaction(emoji)
-        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, context.guild.roles)
+        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
@@ -378,7 +382,7 @@ class Lottery(_command.Command):
         if context.author != previous_organizer:
             checker.has_any_mod_role(context, print_error=True)
 
-        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, context.guild.roles)
+        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
@@ -415,7 +419,7 @@ class Lottery(_command.Command):
             min_argument_size = converter.humanize_datetime(utils.get_current_time())
             raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
-        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, context.guild.roles)
+        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
@@ -449,7 +453,7 @@ class Lottery(_command.Command):
         if nb_winners < 1:
             raise exceptions.UndersizedArgument(nb_winners, 1)
 
-        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, context.guild.roles)
+        embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
@@ -544,7 +548,7 @@ class Lottery(_command.Command):
             else:
                 emoji = message.reactions[0].emoji
         players, reaction, winners = await Lottery.draw(
-            message, src_channel, emoji, nb_winners, seed=seed
+            message, emoji, nb_winners, seed=seed
         )
         announce = f"Tirage au sort sur base de la réaction {emoji}" \
                    f"{f' et du seed `{seed}`' if seed else ''} au message {message.jump_url}"
@@ -554,10 +558,10 @@ class Lottery(_command.Command):
         )
 
     @staticmethod
-    async def draw(message, channel, emoji, nb_winners, seed=None):
+    async def draw(message, emoji, nb_winners, seed=None):
         await Lottery.prepare_seed(seed)
         reaction = utils.try_get(message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji)
-        players, winners = await Lottery.pick_winners(channel, reaction, nb_winners)
+        players, winners = await Lottery.pick_winners(message.guild, reaction, nb_winners)
         return players, reaction, winners
 
     @staticmethod
@@ -567,9 +571,9 @@ class Lottery(_command.Command):
         logger.debug(f"Picking winners using seed = {seed} ({utils.get_current_time()})")
 
     @staticmethod
-    async def pick_winners(channel, reaction, nb_winners, ignore_roles=False):
+    async def pick_winners(guild, reaction, nb_winners, ignore_roles=False):
         players = list(filter(
-            lambda m: checker.has_any_role(channel.guild, m, Lottery.USER_ROLE_NAMES)
+            lambda m: checker.has_any_role(guild, m, Lottery.USER_ROLE_NAMES)
             or ignore_roles and not m.bot,
             await reaction.users().flatten())
         )

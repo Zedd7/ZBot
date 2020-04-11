@@ -63,7 +63,7 @@ class Info(_command.Command):
 
     @staticmethod
     async def display_generic_help(context, max_nest_level):
-        bot_display_name = await Info.get_bot_display_name(context.bot.user, context)
+        bot_display_name = await Info.get_bot_display_name(context.bot.user, context.guild)
         embed = discord.Embed(title=f"Commandes de @{bot_display_name}", color=Info.EMBED_COLOR)
         command_list = Info.get_command_list(context.bot, max_nest_level)
         commands_by_cog = {}
@@ -131,7 +131,7 @@ class Info(_command.Command):
         ignore_extra=False,
     )
     async def version(self, context):
-        bot_display_name = await self.get_bot_display_name(self.user, context)
+        bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
             title=f"Version de @{bot_display_name}",
             description=f"**{zbot.__version__}**",
@@ -148,7 +148,7 @@ class Info(_command.Command):
         ignore_extra=False,
     )
     async def source(self, context):
-        bot_display_name = await self.get_bot_display_name(self.user, context)
+        bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
             title=f"Code source de @{bot_display_name}",
             description=f"https://github.com/Zedd7/ZBot",
@@ -157,9 +157,9 @@ class Info(_command.Command):
         await context.send(embed=embed)
 
     @staticmethod
-    async def get_bot_display_name(bot_user, context):
-        if context.guild:
-            bot_user = context.guild.get_member(bot_user.id)
+    async def get_bot_display_name(bot_user, guild):
+        if guild:
+            bot_user = guild.get_member(bot_user.id)
         return bot_user.display_name
 
 

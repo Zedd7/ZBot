@@ -6,18 +6,21 @@ import dateutil.parser
 import discord
 import emojis
 import pytz
+from dateutil.tz import tzlocal
 
 from zbot import zbot
 from . import exceptions
 
-TIMEZONE = pytz.timezone('Europe/Brussels')
+GUILD_TIMEZONE = pytz.timezone('Europe/Brussels')
 
+
+# Time and timezone manipulations
 
 def to_datetime(instant: str, print_error=True) -> datetime.datetime:
     local_time = None
     try:
         time = dateutil.parser.parse(instant)
-        local_time = TIMEZONE.localize(time)
+        local_time = GUILD_TIMEZONE.localize(time)
     except (ValueError, OverflowError):
         if print_error:
             raise exceptions.MisformattedArgument(instant, "YYYY-MM-MM HH:MM:SS")
@@ -35,6 +38,12 @@ def from_timestamp(timestamp: int) -> datetime.datetime:
 def humanize_datetime(time: datetime.datetime) -> str:
     return time.strftime('%d/%m/%Y à %Hh%M')
 
+
+def get_tz_aware_local_datetime() -> datetime.datetime:
+    return datetime.datetime.now(tzlocal())
+
+
+# Emojis manipulations
 
 def to_emoji_list(emoji_chain: str) -> typing.List[typing.Union[discord.Emoji, str]]:
     emoji_list = []
