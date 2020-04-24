@@ -61,6 +61,7 @@ class Admin(_command.Command):
         help="",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def check_all(self, context):
         await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
@@ -82,6 +83,7 @@ class Admin(_command.Command):
              "• Le surnom ne comporte aucun tag de clan si le joueur n'est pas contact de clan.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def check_everyone(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
@@ -133,6 +135,7 @@ class Admin(_command.Command):
              "• Il n'y a pas deux joueurs ayant le même surnom vérifié.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def check_players(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
@@ -209,6 +212,7 @@ class Admin(_command.Command):
              "• Le contact du clan a toujours les permissions de recrutement au sein de celui-ci",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def check_contacts(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
@@ -318,6 +322,7 @@ class Admin(_command.Command):
              "messages plus récents spécifié (par défaut: 100).",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def check_recruitments(
             self, context,
@@ -511,6 +516,7 @@ class Admin(_command.Command):
              "3. L'annonce est supprimée.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def report_recruitment(self, context, announce_id: int):
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
@@ -574,6 +580,7 @@ class Admin(_command.Command):
         help="Force le bot à se déconnecter du serveur sans arrêter le processus.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def logout(self, context):
         logger.info("Logging out...")

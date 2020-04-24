@@ -45,3 +45,15 @@ def has_guild_role(guild: discord.Guild, user: discord.User, role_name: str):
 
 def has_role(member: discord.Member, role_name: str):
     return discord.utils.get(member.roles, name=role_name)
+
+
+async def is_allowed_in_current_channel(context):
+    if context.channel.name not in context.cog.ALLOWED_CHANNELS \
+            and not has_any_mod_role(context, print_error=False):
+        try:
+            await context.message.add_reaction("❌")
+            await context.author.send(f"Ce canal n'est pas autorisé : {context.channel.mention}")
+            return False
+        except discord.Forbidden:
+            pass
+    return True

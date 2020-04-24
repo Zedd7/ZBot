@@ -1,6 +1,12 @@
 import typing
 
 from discord.ext import commands
+import discord
+
+
+class ForbiddenChannel(commands.CommandError):
+    def __init__(self, forbidden_channel: discord.TextChannel):
+        self.forbidden_channel = forbidden_channel
 
 
 class ForbiddenEmoji(commands.CommandError):
