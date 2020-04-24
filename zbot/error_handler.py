@@ -37,6 +37,8 @@ async def handle(context, error):
 
     # ZBot exceptions
 
+    elif isinstance(error, exceptions.ForbiddenChannel):
+        await context.send(f"Ce canal n'est pas autorisé : {error.forbidden_channel.mention}")
     elif isinstance(error, exceptions.ForbiddenEmoji):
         await context.send(
             "Cet emoji n'est pas autorisé" +

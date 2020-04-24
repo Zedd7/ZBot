@@ -32,7 +32,9 @@ class Messaging(_command.Command):
             converter.get_tz_aware_local_datetime(), datetime.time(9, 0, 0)
         ))
         scheduler.schedule_volatile_job(
-            anniversary_celebration_time, self.celebrate_account_anniversaries
+            anniversary_celebration_time,
+            self.celebrate_account_anniversaries,
+            interval=datetime.timedelta(days=1)
         )
 
     async def celebrate_account_anniversaries(self):

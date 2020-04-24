@@ -1,5 +1,4 @@
 import datetime
-import os
 import pathlib
 import re
 import typing
@@ -25,6 +24,7 @@ class Stats(_command.Command):
     DISPLAY_SEQUENCE = 2
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
+    ALLOWED_CHANNELS = ['général', 'gameplay', 'mentorat', 'spam', 'zbot', 'modération', 'logs']
 
     CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
     EXP_VALUES_FILE_PATH = pathlib.Path('./res/wn8_exp_values.json')
@@ -69,6 +69,7 @@ class Stats(_command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
         if not self.exp_values:
@@ -134,6 +135,7 @@ class Stats(_command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def profile(self, context, player: typing.Union[discord.Member, str] = None):
         player, player_name = utils.parse_player(context.guild, player, context.author)
@@ -206,6 +208,7 @@ class Stats(_command.Command):
         ignore_extra=False,
     )
     @commands.guild_only()
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def clan(self, context, clan_search_field: typing.Union[discord.Member, str] = None):
         clan_id = None

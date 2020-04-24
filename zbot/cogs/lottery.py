@@ -61,14 +61,16 @@ class Lottery(_command.Command):
         aliases=['s', 'set', 'plan'],
         usage="<\"announce\"> <#dest_channel> <:emoji:> <nb_winners> <\"time\"> [--no-announce]",
         brief="Programme un tirage au sort",
-        help="Le bot publie une annonce correspondant au message entouré de guillemets dans le canal de destination. "
-             "Les joueurs participent en cliquant sur l'émoji de réaction. À la date et à l'heure indiquées "
-             "(au format `\"YYYY-MM-DD HH:MM:SS\"`), les gagnants sont tirés au sort et contactés par MP par le bot. "
-             "L'organisateur reçoit par MP une copie du résultat et de la liste des participants injoignables. "
-             "Par défaut, l'annonce mentionne automatiquement le rôle `@Abonné Annonces`. "
-             "Pour éviter cela, il faut ajouter l'argument `--no-announce`.",
+        help="Le bot publie une **annonce** dans le **canal de destination**. Les joueurs "
+             "participent en cliquant sur l'**émoji** de réaction. À la **date et heure** "
+             "indiquées (au format `\"YYYY-MM-DD HH:MM:SS\"`), un **nombre de gagnants** sont "
+             "tirés au sort et contactés par MP par le bot. L'organisateur reçoit par MP une copie "
+             "du résultat et de la liste des participants injoignables. Par défaut, l'annonce "
+             "mentionne automatiquement le rôle `@Abonné Annonces`. Pour éviter cela, il faut "
+             "ajouter l'argument `--no-announce`.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
     async def setup(
             self, context: commands.Context,
@@ -81,7 +83,7 @@ class Lottery(_command.Command):
     ):
         # Check arguments
         if not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+            raise exceptions.ForbiddenChannel(dest_channel)
         if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
             raise exceptions.ForbiddenEmoji(emoji)
         if nb_winners < 1:
@@ -185,6 +187,7 @@ class Lottery(_command.Command):
         brief="Affiche la liste des tirages au sort en cours",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def list(self, context: commands.Context):
         lottery_descriptions, guild_id = {}, self.guild.id
@@ -214,6 +217,7 @@ class Lottery(_command.Command):
              "sort se base dessus pour le choix des gagnants.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def pick(self, context: commands.Context, lottery_id: int, seed: int = None):
         message, _, _, _, _, organizer = await self.get_message_env(
@@ -257,6 +261,7 @@ class Lottery(_command.Command):
         help="Le numéro de loterie est affiché entre crochets par la commande `+lottery list`.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def cancel(self, context: commands.Context, lottery_id: int):
         message, _, emoji, _, _, organizer = await self.get_message_env(
@@ -275,13 +280,14 @@ class Lottery(_command.Command):
             embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
             await message.edit(embed=embed)
         self.remove_pending_lottery(message.id, cancel_job=True)
-        await context.send(f"Tirage au sort d'identifiant `{lottery_id}` annulé.")
+        await context.send(f"Tirage au sort d'identifiant `{lottery_id}` annulé : <{message.jump_url}>")
 
     @lottery.group(
         name='edit',
         brief="Modifie un tirage au sort",
         invoke_without_command=True
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def edit(self, context):
         if context.invoked_subcommand is None:
@@ -298,6 +304,7 @@ class Lottery(_command.Command):
              "Dans tous les cas, les membres du serveur ne seront pas notifiés.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def announce(
             self, context: commands.Context,
@@ -311,6 +318,8 @@ class Lottery(_command.Command):
 
         if context.author != organizer:
             checker.has_any_mod_role(context, print_error=True)
+        if not context.author.permissions_in(channel).send_messages:
+            raise exceptions.ForbiddenChannel(channel)
 
         do_announce = not utils.is_option_enabled(options, 'no-announce')
         prefixed_announce = utils.make_announce(
@@ -331,6 +340,7 @@ class Lottery(_command.Command):
              "Les réactions à l'ancien émoji ne sont pas prises en compte.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def emoji(
             self, context: commands.Context,
@@ -370,6 +380,7 @@ class Lottery(_command.Command):
         help="Le précédent organisateur du tirage au sort est remplacé par l'organisateur fourni.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def organizer(
             self, context: commands.Context,
@@ -403,6 +414,7 @@ class Lottery(_command.Command):
              "format `\"YYYY-MM-DD HH:MM:SS\"`). ",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def time(
             self, context: commands.Context,
@@ -423,7 +435,7 @@ class Lottery(_command.Command):
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
-        scheduler.reschedule_job(job_id, time)  # Also updates the next_run_time in db
+        scheduler.reschedule_stored_job(job_id, time)  # Also updates the next_run_time in db
         lottery_data = {'next_run_time': converter.to_timestamp(time)}
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
@@ -436,9 +448,11 @@ class Lottery(_command.Command):
         aliases=['gagnants', 'nb_winners', 'n'],
         usage="<lottery_id> <nb_winners>",
         brief="Modifie le nombre de gagnants du tirage au sort",
-        help="Le précédent nombre de gagnants du tirage au sort est remplacé par le nombre de gagnants fourni.",
+        help="Le précédent nombre de gagnants du tirage au sort est remplacé par le nombre de "
+             "gagnants fourni.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def winners(
             self, context: commands.Context,
@@ -501,7 +515,7 @@ class Lottery(_command.Command):
                     {'lottery_id': lottery_data['lottery_id']}
                 )
         if cancel_job:
-            scheduler.cancel_job(Lottery.pending_lotteries[message_id]['_id'])
+            scheduler.cancel_stored_job(Lottery.pending_lotteries[message_id]['_id'])
         del Lottery.pending_lotteries[message_id]
 
     @lottery.command(
@@ -510,15 +524,17 @@ class Lottery(_command.Command):
         usage="<#src_channel> <message_id> [:emoji:] [nb_winners] [#dest_channel] [@organizer] "
               "[seed]",
         brief="Simule un tirage au sort",
-        help="Le bot tire au sort les gagnants parmi les joueurs ayant réagi au message source "
-             "avec l'émoji de la réaction présente si elle est unique, avec l'émoji fourni sinon. "
-             "Si un canal de destination est fourni, il est utilisé pour publier les résultats de "
-             "la simulation. Sinon, le canal courant est utilisé. Si un organisateur est indiqué, "
-             "les gagnants sont contactés par MP et l'organisateur reçoit par MP une copie du "
-             "résultat et de la liste des participants injoignables. Si un seed est fourni, la "
-             "simulation se base dessus pour le choix des gagnants.",
+        help="Le bot tire au sort le **nombre de gagnants** parmi les joueurs ayant réagi au "
+             "**message source** avec l'émoji de la réaction présente si elle est unique, avec "
+             "l'**émoji** fourni sinon. Si un **canal de destination** est fourni, il est utilisé "
+             "pour publier les résultats de la simulation. Sinon, le canal courant est utilisé. Si "
+             "un **organisateur** est indiqué, les gagnants sont contactés par MP et "
+             "l'organisateur reçoit par MP une copie du résultat et de la liste des participants "
+             "injoignables. Si un **seed** est fourni, la simulation se base dessus pour le choix "
+             "des gagnants.",
         ignore_extra=False
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
     async def simulate(
             self, context: commands.Context,
@@ -535,7 +551,7 @@ class Lottery(_command.Command):
         if nb_winners < 1:
             raise exceptions.UndersizedArgument(nb_winners, 1)
         if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
-            raise commands.MissingPermissions([f"`send_messages` in {dest_channel.mention}"])
+            raise exceptions.ForbiddenChannel(dest_channel)
 
         message = await utils.try_get_message(
             src_channel, message_id, error=exceptions.MissingMessage(message_id)

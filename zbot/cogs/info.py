@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 
+from zbot import checker
 from zbot import exceptions
 from zbot import utils
 from zbot import zbot
@@ -34,6 +35,7 @@ class Info(_command.Command):
              "l'argument `--nest=level` où `level` est le nombre de niveaux à parcourir.",
         ignore_extra=False,
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     async def help(self, context, *, args: str = ""):
         max_nest_level = utils.get_option_value(args, 'nest')
         if max_nest_level:
@@ -91,13 +93,14 @@ class Info(_command.Command):
     @staticmethod
     async def display_command_help(context, command):
         parent = command.full_parent_name
-        embed_description = f"Description : {command.brief}" if command.brief else ""
-        embed_description += ("\nAlias : " +
+        embed_description = f"**Description** : {command.brief}" if command.brief else ""
+        embed_description += ("\n**Alias** : " +
                               ", ".join([f"`+{(parent + ' ') if parent else ''}{alias}`" for alias in command.aliases])
                               ) if command.aliases else ""
         if command.usage:
-            embed_description += f"\nArguments : `{command.usage}`"
-            embed_description += "\nLégende : `<arg>` = obligatoire ; `[arg]` = facultatif"
+            embed_description += f"\n**Arguments** : `{command.usage}`"
+            embed_description += "\n**Légende** : `<arg>` = obligatoire ; `[arg]` = facultatif ; " \
+                                 "`\"arg\"` = argument devant être entouré de guillemets"
         embed_description += f"\n\n{command.help}" if command.help else ""
         embed = discord.Embed(title=f"Commande `+{command}`", description=embed_description, color=Info.EMBED_COLOR)
         await context.send(embed=embed)
@@ -130,6 +133,7 @@ class Info(_command.Command):
              "soit en développement et que la version de celui-ci ne corresponde donc pas à celle du code source.",
         ignore_extra=False,
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     async def version(self, context):
         bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
@@ -147,6 +151,7 @@ class Info(_command.Command):
              "Les droits d'utilisation du code source sont repris dans le fichier LICENSE.",
         ignore_extra=False,
     )
+    @commands.check(checker.is_allowed_in_current_channel)
     async def source(self, context):
         bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(

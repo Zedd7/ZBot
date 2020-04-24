@@ -1,8 +1,10 @@
+import datetime
 from datetime import timedelta
 
 from apscheduler.jobstores.mongodb import MongoDBJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from . import database
 from . import logger
@@ -23,6 +25,10 @@ def setup(db: database.MongoDBConnector):
                  f"{', '.join([job.id for job in scheduler.get_jobs()])}")
 
 
+def get_job_run_date(job_id):
+    return scheduler.get_job(job_id).next_run_time
+
+
 def schedule_stored_job(collection_name, time, callback, *args):
     job = scheduler.add_job(
         func=callback,
@@ -36,26 +42,26 @@ def schedule_stored_job(collection_name, time, callback, *args):
     return job
 
 
-def schedule_volatile_job(time, callback, *args):
+def reschedule_stored_job(job_id, time):
+    job_trigger = DateTrigger(run_date=time)
+    scheduler.reschedule_job(job_id, trigger=job_trigger)
+
+
+def cancel_stored_job(job_id):
+    scheduler.remove_job(job_id)
+    logger.debug(f"Cancelled job of id : {job_id}")
+
+
+def schedule_volatile_job(time, callback, *args, interval: datetime.timedelta = None):
+    trigger = None
+    if interval:
+        trigger = IntervalTrigger(seconds=int(interval.total_seconds()))
     job = scheduler.add_job(
         func=callback,
+        trigger=trigger,
         args=args,
         misfire_grace_time=VOLATILE_JOB_MISFIRE_GRACE_TIME,
         next_run_time=time,
         replace_existing=True
     )
     return job
-
-
-def get_job_run_date(job_id):
-    return scheduler.get_job(job_id).next_run_time
-
-
-def reschedule_job(job_id, time):
-    job_trigger = DateTrigger(run_date=time)
-    scheduler.reschedule_job(job_id, trigger=job_trigger)
-
-
-def cancel_job(job_id):
-    scheduler.remove_job(job_id)
-    logger.debug(f"Cancelled job of id : {job_id}")
