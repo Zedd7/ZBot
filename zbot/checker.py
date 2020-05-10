@@ -57,3 +57,8 @@ async def is_allowed_in_current_channel(context):
         except discord.Forbidden:
             pass
     return True
+
+
+async def is_allowed_in_all_channels(context):
+    """Placeholder check returning always True."""
+    return True

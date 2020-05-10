@@ -14,7 +14,7 @@ class Info(_command.Command):
 
     DISPLAY_NAME = "Aide & Informations"
     DISPLAY_SEQUENCE = 1
-    MOD_ROLE_NAMES = ['Administrateur']
+    MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = ['Joueur']
     EMBED_COLOR = 0x91b6f2  # Pastel blue
     MAX_COMMAND_NEST_LEVEL = 1
@@ -46,11 +46,11 @@ class Info(_command.Command):
         else:
             max_nest_level = Info.MAX_COMMAND_NEST_LEVEL
         full_command_name = utils.remove_option(args, 'nest')
-        if not full_command_name:
+        if not full_command_name:  # No command specified
             if max_nest_level < 1:
                 raise exceptions.UndersizedArgument(max_nest_level, 1)
             await self.display_generic_help(context, max_nest_level)
-        else:
+        else:  # Request help commands matching the given pattern
             command_name = full_command_name.split(' ')[-1]
             command_chain = full_command_name.split(' ')[:-1]
             matching_commands = utils.get_commands(context, command_chain, command_name)
@@ -70,7 +70,8 @@ class Info(_command.Command):
         command_list = Info.get_command_list(context.bot, max_nest_level)
         commands_by_cog = {}
         for command in command_list:
-            commands_by_cog.setdefault(command.cog, []).append(command)
+            if not command.hidden or checker.has_any_mod_role(context, print_error=False):
+                commands_by_cog.setdefault(command.cog, []).append(command)
         for cog in sorted(commands_by_cog, key=lambda c: c.DISPLAY_SEQUENCE):
             embed.add_field(
                 name=cog.DISPLAY_NAME,
@@ -82,16 +83,28 @@ class Info(_command.Command):
 
     @staticmethod
     async def display_group_help(context, group, max_nest_level):
+        if group.hidden:
+            checker.has_any_mod_role(context, print_error=True)
+
         command_list = Info.get_command_list(group, max_nest_level)
+        authorized_command_list = list(filter(
+            lambda c: not c.hidden or checker.has_any_mod_role(context, print_error=False),
+            command_list
+        ))
         embed = discord.Embed(
             title=group.cog.DISPLAY_NAME,
-            description="\n".join([f"• `+{command}` : {command.brief}" for command in command_list]),
+            description="\n".join([
+                f"• `+{command}` : {command.brief}" for command in authorized_command_list
+            ]),
             color=Info.EMBED_COLOR
         )
         await context.send(embed=embed)
 
     @staticmethod
     async def display_command_help(context, command):
+        if command.hidden:
+            checker.has_any_mod_role(context)
+
         parent = command.full_parent_name
         embed_description = f"**Description** : {command.brief}" if command.brief else ""
         embed_description += ("\n**Alias** : " +

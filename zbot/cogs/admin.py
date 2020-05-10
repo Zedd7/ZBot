@@ -47,6 +47,7 @@ class Admin(_command.Command):
     @commands.group(
         name='check',
         brief="Gère les vérifications automatiques",
+        hidden=True,
         invoke_without_command=True
     )
     @commands.guild_only()
@@ -59,6 +60,7 @@ class Admin(_command.Command):
         aliases=[],
         brief="Effectue toutes les batteries de test",
         help="",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -81,6 +83,7 @@ class Admin(_command.Command):
         help="Pour chaque membre du serveur, il est vérifié que :\n"
              "• Le joueur possède au moins un rôle.\n"
              "• Le surnom ne comporte aucun tag de clan si le joueur n'est pas contact de clan.",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -133,6 +136,7 @@ class Admin(_command.Command):
         help="Pour chaque joueur, il est vérifié que :\n"
              "• Le surnom corresponde a un pseudo WoT.\n"
              "• Il n'y a pas deux joueurs ayant le même surnom vérifié.",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -210,6 +214,7 @@ class Admin(_command.Command):
              "• Pas plus d'un contact ne représente le clan\n"
              "• Le contact du clan est toujours membre de celui-ci\n"
              "• Le contact du clan a toujours les permissions de recrutement au sein de celui-ci",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -320,6 +325,7 @@ class Admin(_command.Command):
              "`\"YYYY-MM-DD HH:MM:SS\"`\n"
              "Le nombre `limit` filtre les anciens messages pour ne garder que le nombre de "
              "messages plus récents spécifié (par défaut: 100).",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -490,6 +496,7 @@ class Admin(_command.Command):
     @commands.group(
         name='report',
         brief="Gère les modérations automatiques",
+        hidden=True,
         invoke_without_command=True
     )
     @commands.guild_only()
@@ -514,6 +521,7 @@ class Admin(_command.Command):
              "copie du rendu de son annonce.\n"
              "2. Le modérateur reçoit une copie du rapport.\n"
              "3. L'annonce est supprimée.",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)
@@ -578,6 +586,7 @@ class Admin(_command.Command):
         aliases=['stop', 'disconnect'],
         brief="Déconnecte le bot",
         help="Force le bot à se déconnecter du serveur sans arrêter le processus.",
+        hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.is_allowed_in_current_channel)

@@ -216,14 +216,15 @@ def get_current_time():
     return datetime.datetime.now(TIMEZONE)
 
 
-def is_option_enabled(options: str, option_name: str) -> bool:
+def is_option_enabled(options: str, option_name: str, has_value=False) -> bool:
     """
     Search a match for the option prefixed with `--`.
     :param options: The string of options
     :param option_name: The name of the option to search, without `--`
+    :param has_value: Whether the option should be found with a value assigned
     :return: True if found, False otherwise
     """
-    p = re.compile(rf'^--{option_name}$')
+    p = re.compile(rf'^--{option_name}' + ('$' if not has_value else ''))
     for option in options and shlex.split(options) or []:  # Preserve inner quoted strings
         if p.search(option):
             return True
@@ -237,7 +238,7 @@ def get_option_value(options: str, option_name: str) -> str or None:
     :param option_name: The name of the option whose value to search, without `--`
     :return: The option value if found, None otherwise
     """
-    p = re.compile(rf'^--{option_name}+=(\w+)$')
+    p = re.compile(rf'^--{option_name}=(.+)$')
     for option in options and shlex.split(options) or []:  # Preserve inner quoted strings
         if match_result := p.search(option):
             # Extract option value from regex group
