@@ -1,9 +1,11 @@
 import datetime
 
 import discord
+from discord.ext import commands
 
 from zbot import checker
 from zbot import converter
+from zbot import exceptions
 from zbot import scheduler
 from zbot import utils
 from zbot import wot_utils
@@ -15,7 +17,7 @@ class Messaging(_command.Command):
 
     """Commands for social interactions."""
 
-    DISPLAY_NAME = "Messages & Évènements"
+    DISPLAY_NAME = "Communications"
     DISPLAY_SEQUENCE = 5
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = ['Joueur']
@@ -36,6 +38,74 @@ class Messaging(_command.Command):
             self.celebrate_account_anniversaries,
             interval=datetime.timedelta(days=1)
         )
+
+    @commands.command(
+        name='switch',
+        usage='[--number=N] [--ping] [--delete]',
+        brief="Redirige une conversation",
+        help="Suggère au participants d'une conversation dans le canal courant à la poursuivre "
+             "ailleurs. Par défaut, les 3 derniers messages sont copiés dans le canal de "
+             "destination. Pour modifier le nombre de messages à copier, ajoutez l'argument "
+             "`--number=N` où `N` est le nombre de messages à copier (maximum 10). Pour "
+             "respectivement mentionner les auteurs de ces messages ou les supprimer, ajoutez "
+             "l'argument `--ping` ou `--delete` (droits de modération requis).",
+        ignore_extra=True
+    )
+    @commands.check(checker.is_allowed_in_all_channels)
+    @commands.check(checker.has_any_user_role)
+    async def switch(self, context, dest_channel: discord.TextChannel, *, options=""):
+        if context.channel == dest_channel \
+                or not context.author.permissions_in(dest_channel).send_messages:
+            raise exceptions.ForbiddenChannel(dest_channel)
+        number_option = utils.get_option_value(options, 'number')
+        if number_option is not None:  # Value assigned
+            try:
+                messages_number = int(number_option)
+            except ValueError:
+                raise exceptions.MisformattedArgument(number_option, "valeur entière")
+            if messages_number < 1:
+                raise exceptions.UndersizedArgument(messages_number, 1)
+            elif messages_number > 10 and not checker.has_any_mod_role(context, print_error=False):
+                raise exceptions.OversizedArgument(messages_number, 10)
+        elif utils.is_option_enabled(options, 'number', has_value=True):  # No value assigned
+            raise exceptions.MisformattedArgument(number_option, "valeur entière")
+        else:  # Option not used
+            messages_number = 3
+        do_ping = utils.is_option_enabled(options, 'ping')
+        do_delete = utils.is_option_enabled(options, 'delete')
+        if do_ping or do_delete:
+            checker.has_any_mod_role(context, print_error=True)
+
+        messages = await context.channel.history(limit=messages_number+1).flatten()
+        messages.reverse()  # Order by oldest first
+        messages.pop()  # Remove message used for the command
+
+        await dest_channel.send(f"**Suite de la discussion de {context.channel.mention} 💨**")
+        await self.move_messages(messages, dest_channel, do_ping, do_delete)
+        await context.send(
+            f"**Veuillez basculer cette discussion dans le canal {dest_channel.mention} qui serait "
+            f"plus approprié ! 🧹**"
+        )
+        await context.message.delete()
+
+    @staticmethod
+    async def move_messages(messages, dest_channel, do_ping, do_delete):
+
+        async def _flush_buffer():
+            author_mention = current_author.mention if do_ping \
+                else '@' + current_author.display_name
+            await dest_channel.send(f"{author_mention} :\n>>> " + "\n".join(content_buffer))
+            content_buffer.clear()
+
+        content_buffer, current_author = [], None
+        for message in messages:
+            if message.author != current_author and current_author is not None:  # New message batch
+                await _flush_buffer()
+            current_author = message.author
+            content_buffer.append(message.content)
+            if do_delete:
+                await message.delete()
+        await _flush_buffer()
 
     async def celebrate_account_anniversaries(self):
         # Get anniversary data
