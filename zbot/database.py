@@ -16,11 +16,13 @@ from . import logger
 class MongoDBConnector:
 
     ACCOUNT_DATA_COLLECTION = 'account_data'
+    METADATA_COLLECTION = 'metadata'  # Collection of data about bot jobs and data
     PENDING_LOTTERIES_COLLECTION = 'pending_lottery'
     PENDING_POLLS_COLLECTION = 'pending_poll'
     RECRUITMENT_ANNOUNCES_COLLECTION = 'recruitment_announce'
     COLLECTIONS_CONFIG = {
         ACCOUNT_DATA_COLLECTION: {},
+        METADATA_COLLECTION: {},
         PENDING_LOTTERIES_COLLECTION: {'is_jobstore': True},
         PENDING_POLLS_COLLECTION: {'is_jobstore': True},
         RECRUITMENT_ANNOUNCES_COLLECTION: {},
@@ -62,6 +64,21 @@ class MongoDBConnector:
 
         return self.connected
 
+    # Metadata
+
+    def update_metadata(self, key, value):
+        self.database[self.METADATA_COLLECTION].update_one(
+            {'_id': key},
+            {'$set': {'data': value}},
+            upsert=True
+        )
+        logger.debug(f"Updated metadata '{key}': '{value}'.")
+
+    def get_metadata(self, key):
+        if res := self.database[self.METADATA_COLLECTION].find_one({'_id': key}):
+            return res['data']
+        return None
+
     # Admin
 
     def update_recruitment_announces(self, announces):
@@ -74,6 +91,12 @@ class MongoDBConnector:
             )
             upsert_count += bool(res.upserted_id)
         logger.debug(f"Inserted or updated {upsert_count} recruitment announce(s).")
+
+    def delete_recruitment_announces_by_author(self, member_id):
+        res = self.database[self.RECRUITMENT_ANNOUNCES_COLLECTION].delete_many(
+            {'author': member_id}
+        )
+        logger.debug(f"Deleted {res.deleted_count} recruitment announce(s).")
 
     def load_recruitment_announces_data(self, query: Dict[str, Any], order: List[Tuple[str, int]]):
         return list(self.database[self.RECRUITMENT_ANNOUNCES_COLLECTION].find(query, sort=order))

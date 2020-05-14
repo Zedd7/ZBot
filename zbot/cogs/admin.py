@@ -3,6 +3,7 @@ import re
 import sys
 from copy import copy
 
+import discord
 from discord.ext import commands
 
 from zbot import checker
@@ -492,6 +493,34 @@ class Admin(_command.Command):
             await context.send(f"Aucune annonce n'a été publiée avant le délai minimum de "
                                f"{Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} jours. :ok_hand: ")
         return before_timespan_announces
+
+    @commands.group(
+        name='clear',
+        brief="Remet à zéro le suivi des modérations automatiques",
+        hidden=True,
+        invoke_without_command=True
+    )
+    @commands.guild_only()
+    async def clear(self, context):
+        if context.invoked_subcommand is None:
+            raise exceptions.MissingSubCommand(context.command.name)
+
+    @clear.command(
+        name='recruitment',
+        aliases=['recruitments', 'recrutement', 'recrut'],
+        usage="<@member>",
+        brief="Remet à zéro le suivi des annonces de recrutement",
+        help="L'historique des annonces de recrutement du membre fourni est remis à zéro.",
+        hidden=True,
+        ignore_extra=True
+    )
+    @commands.check(checker.is_allowed_in_current_channel)
+    @commands.check(checker.has_any_mod_role)
+    async def clear_recruitment(self, context, member: discord.Member):
+        zbot.db.delete_recruitment_announces_by_author(member.id)
+        await context.send(
+            f"Le suivi des annonces de recrutement de {member.mention} a été remis à zéro."
+        )
 
     @commands.group(
         name='report',
