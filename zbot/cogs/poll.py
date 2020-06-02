@@ -30,20 +30,18 @@ class Poll(_command.Command):
     EMBED_COLOR = 0x9D71DC  # Pastel purple
     JOBSTORE = database.MongoDBConnector.PENDING_POLLS_COLLECTION
 
-    pending_polls = {}
+    pending_polls = {}  # Local cache of poll data for reactions check
 
     def __init__(self, bot):
         super().__init__(bot)
-        zbot.db.load_pending_jobs_data(
+        # Use class attribute to be available from static methods
+        Poll.pending_polls = zbot.db.load_pending_jobs_data(
             self.JOBSTORE,
-            self.pending_polls,
             data_keys=(
                 '_id', 'poll_id', 'message_id', 'channel_id', 'emoji_codes', 'next_run_time',
                 'organizer_id', 'is_exclusive', 'required_role_name'
             )
         )
-        for poll_data in self.pending_polls.values():
-            logger.debug(f"Loaded pending poll data: {poll_data}")
 
     @commands.group(
         name='poll',
@@ -173,12 +171,8 @@ class Poll(_command.Command):
         return embed
 
     def get_next_poll_id(self) -> int:
-        next_poll_id = 1
-        for poll_data in self.pending_polls.values():
-            poll_id = poll_data['poll_id']
-            if poll_id >= next_poll_id:
-                next_poll_id = poll_id + 1
-        return next_poll_id
+        pending_poll_ids = [poll_data['poll_id'] for poll_data in self.pending_polls.values()]
+        return max(pending_poll_ids) + 1 if pending_poll_ids else 1
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):

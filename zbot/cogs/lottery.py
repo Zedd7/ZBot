@@ -31,20 +31,18 @@ class Lottery(_command.Command):
     EMBED_COLOR = 0x77B255  # Four leaf clover green
     JOBSTORE = database.MongoDBConnector.PENDING_LOTTERIES_COLLECTION
 
-    pending_lotteries = {}
+    pending_lotteries = {}  # Local cache of lottery data for reactions check
 
     def __init__(self, bot):
         super().__init__(bot)
-        zbot.db.load_pending_jobs_data(
+        # Use class attribute to be available from static methods
+        Lottery.pending_lotteries = zbot.db.load_pending_jobs_data(
             self.JOBSTORE,
-            self.pending_lotteries,
             data_keys=(
                 '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code', 'nb_winners',
                 'next_run_time', 'organizer_id'
             )
         )
-        for lottery_data in self.pending_lotteries.values():
-            logger.debug(f"Loaded pending lottery data: {lottery_data}")
 
     @commands.group(
         name='lottery',
@@ -150,12 +148,8 @@ class Lottery(_command.Command):
         return embed
 
     def get_next_lottery_id(self) -> int:
-        next_lottery_id = 1
-        for lottery_data in self.pending_lotteries.values():
-            lottery_id = lottery_data['lottery_id']
-            if lottery_id >= next_lottery_id:
-                next_lottery_id = lottery_id + 1
-        return next_lottery_id
+        pending_lottery_ids = [lottery_data['lottery_id'] for lottery_data in self.pending_lotteries.values()]
+        return max(pending_lottery_ids) + 1 if pending_lottery_ids else 1
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):

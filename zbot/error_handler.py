@@ -75,8 +75,9 @@ async def handle(context, error):
     elif isinstance(error, exceptions.UnknownCommand):
         await context.send(f"Commande inconnue : `{error.unknown_command_name}`")
     elif any(isinstance(error, error_type) for error_type in (
+        exceptions.UnknownAutomessage,
         exceptions.UnknownLottery,
-        exceptions.UnknownPoll
+        exceptions.UnknownPoll,
     )):
         await context.send(f"Identifiant inconnu : `{error.unknown_id}`")
     elif isinstance(error, exceptions.UnknownPlayer):

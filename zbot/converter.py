@@ -11,7 +11,8 @@ from dateutil.tz import tzlocal
 from zbot import zbot
 from . import exceptions
 
-GUILD_TIMEZONE = pytz.timezone('Europe/Brussels')
+COMMUNITY_TIMEZONE = pytz.timezone('Europe/Brussels')
+GUILD_TIMEZONE = pytz.timezone('UTC')
 
 
 # Time and timezone manipulations
@@ -20,7 +21,7 @@ def to_datetime(instant: str, print_error=True) -> datetime.datetime:
     local_time = None
     try:
         time = dateutil.parser.parse(instant)
-        local_time = GUILD_TIMEZONE.localize(time)
+        local_time = COMMUNITY_TIMEZONE.localize(time)
     except (ValueError, OverflowError):
         if print_error:
             raise exceptions.MisformattedArgument(instant, "YYYY-MM-MM HH:MM:SS")
@@ -41,6 +42,10 @@ def humanize_datetime(time: datetime.datetime) -> str:
 
 def get_tz_aware_local_datetime() -> datetime.datetime:
     return datetime.datetime.now(tzlocal())
+
+
+def get_tz_aware_guild_datetime(time: datetime.datetime) -> datetime.datetime:
+    return GUILD_TIMEZONE.localize(time)
 
 
 # Emojis manipulations
