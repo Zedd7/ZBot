@@ -67,6 +67,11 @@ class UndersizedArgument(commands.CommandError):
         self.min_size = min_size
 
 
+class UnknownAutomessage(commands.CommandError):
+    def __init__(self, unknown_automessage_id):
+        self.unknown_id = unknown_automessage_id
+
+
 class UnknownClan(commands.CommandError):
     def __init__(self, unknown_clan_name):
         self.unknown_clan_name = unknown_clan_name

@@ -469,9 +469,9 @@ class Admin(_command.Command):
                 {'time': announce_data['time'], 'message_id': announce_data['_id']}
             )
 
-        # Find all existing announces that have the same author as a recent but deleted announce
+        # Find all existing announces that have the same author as a recent, but deleted, announce
         min_timespan = datetime.timedelta(
-            # Apply a tolerance of 2 days as some players will interpret the 30 days range as "one month".
+            # Apply a tolerance of 2 days for players interpreting the 30 days range as "one month"
             days=Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN - Admin.RECRUITMENT_ANNOUNCE_TIMESPAN_TOLERANCE
         )
         before_timespan_announces = []
@@ -480,7 +480,7 @@ class Admin(_command.Command):
                 previous_announce_time = announce_data['time']
                 if previous_announce_time + min_timespan > announce.created_at:
                     before_timespan_announces.append((announce, previous_announce_time))
-                    break  # Only report in regard to the most recent deleted announce
+                    break  # Only check based on the most recent deleted announce
         if before_timespan_announces:
             for block in utils.make_message_blocks([
                 f"L'annonce de {announce.author.mention} a été postée avant le délai minimum de "
@@ -490,8 +490,10 @@ class Admin(_command.Command):
             ]):
                 await context.send(block)
         else:
-            await context.send(f"Aucune annonce n'a été publiée avant le délai minimum de "
-                               f"{Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} jours. :ok_hand: ")
+            await context.send(
+                f"Aucune annonce n'a été publiée avant le délai minimum de {Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} "
+                f"jours. :ok_hand: "
+            )
         return before_timespan_announces
 
     @commands.group(
@@ -508,18 +510,25 @@ class Admin(_command.Command):
     @clear.command(
         name='recruitment',
         aliases=['recruitments', 'recrutement', 'recrut'],
-        usage="<@member>",
+        usage="<@member> [\"time\"]",
         brief="Remet à zéro le suivi des annonces de recrutement",
-        help="L'historique des annonces de recrutement du membre fourni est remis à zéro.",
+        help="L'historique des annonces de recrutement du membre fourni est remis à zéro. Si une date est fournie (au "
+             "format `\"YYYY-MM-DD\"`), il ne sera possible au membre de ne poster une nouvelle annonce de "
+             "recrutement qu'à partir de cette date.",
         hidden=True,
         ignore_extra=True
     )
     @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
-    async def clear_recruitment(self, context, member: discord.Member):
-        zbot.db.delete_recruitment_announces_by_author(member.id)
+    async def clear_recruitment(self, context, member: discord.Member, time: converter.to_datetime = None):
+        zbot.db.delete_recruitment_announces({'author': member.id})
+        if time:
+            zbot.db.insert_recruitment_announce(
+                member, time - datetime.timedelta(days=self.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN)
+            )
         await context.send(
             f"Le suivi des annonces de recrutement de {member.mention} a été remis à zéro."
+            + ("" if not time else f"\nBlocage des nouvelles annonces jusqu'au {converter.humanize_datetime(time)}")
         )
 
     @commands.group(
@@ -567,11 +576,16 @@ class Admin(_command.Command):
         patched_context = copy(context)
         patched_context.send = Admin.mock_send
         Admin.send_buffer.clear()
-        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) or Admin.send_buffer.pop()
+        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
 
         if not Admin.send_buffer:
             await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")

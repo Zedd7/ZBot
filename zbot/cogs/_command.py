@@ -19,5 +19,5 @@ class Command(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.user = self.bot.user
-        self.guild = bot.get_guild(GUILD_ID)
+        self.guild = self.bot.get_guild(GUILD_ID)
         self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'

@@ -21,8 +21,10 @@ def setup(db: database.MongoDBConnector):
         jobstore = MongoDBJobStore(database=db.database_name, collection=collection_name, client=db.client)
         scheduler.add_jobstore(jobstore, alias=collection_name)
     scheduler.start()
-    logger.debug(f"Loaded {len(scheduler.get_jobs())} job(s): "
-                 f"{', '.join([job.id for job in scheduler.get_jobs()])}")
+    jobs = scheduler.get_jobs()
+    logger.debug(
+        f"Loaded {len(jobs)} job(s)" + (f": {', '.join([job.id for job in jobs])}" if jobs else ".")
+    )
 
 
 def get_job_run_date(job_id):

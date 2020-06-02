@@ -57,7 +57,8 @@ class Info(_command.Command):
             if not matching_commands:
                 raise exceptions.UnknownCommand(command_name)
             else:
-                for command in matching_commands:
+                sorted_matching_commands = sorted(matching_commands, key=lambda c: c.name)
+                for command in sorted_matching_commands:
                     if isinstance(command, commands.Group):
                         await self.display_group_help(context, command, max_nest_level)
                     else:
@@ -73,9 +74,10 @@ class Info(_command.Command):
             if not command.hidden or checker.has_any_mod_role(context, print_error=False):
                 commands_by_cog.setdefault(command.cog, []).append(command)
         for cog in sorted(commands_by_cog, key=lambda c: c.DISPLAY_SEQUENCE):
+            sorted_cog_commands = sorted(commands_by_cog[cog], key=lambda c: c.name)
             embed.add_field(
                 name=cog.DISPLAY_NAME,
-                value="\n".join([f"• `+{command}` : {command.brief}" for command in commands_by_cog[cog]]),
+                value="\n".join([f"• `+{command}` : {command.brief}" for command in sorted_cog_commands]),
                 inline=False
             )
         embed.set_footer(text="Utilisez +help <commande> pour plus d'informations")
@@ -91,10 +93,11 @@ class Info(_command.Command):
             lambda c: not c.hidden or checker.has_any_mod_role(context, print_error=False),
             command_list
         ))
+        sorted_group_commands = sorted(authorized_command_list, key=lambda c: c.name)
         embed = discord.Embed(
             title=group.cog.DISPLAY_NAME,
             description="\n".join([
-                f"• `+{command}` : {command.brief}" for command in authorized_command_list
+                f"• `+{command}` : {command.brief}" for command in sorted_group_commands
             ]),
             color=Info.EMBED_COLOR
         )
