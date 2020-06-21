@@ -51,7 +51,8 @@ class Admin(_command.Command):
         hidden=True,
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -64,8 +65,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_all(self, context):
         await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
@@ -87,8 +88,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_everyone(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
@@ -140,8 +141,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_players(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
@@ -218,8 +219,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_contacts(self, context, add_reaction=True):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
@@ -329,8 +330,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_recruitments(
             self, context,
             after: converter.to_datetime = converter.to_datetime('1970-01-01'),
@@ -502,7 +503,8 @@ class Admin(_command.Command):
         hidden=True,
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def clear(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -518,8 +520,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def clear_recruitment(self, context, member: discord.Member, time: converter.to_datetime = None):
         zbot.db.delete_recruitment_announces({'author': member.id})
         if time:
@@ -537,7 +539,8 @@ class Admin(_command.Command):
         hidden=True,
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def report(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -562,8 +565,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def report_recruitment(self, context, announce_id: int):
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         recruitment_announce = await utils.try_get_message(
@@ -632,8 +635,8 @@ class Admin(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_all_channels)
     async def logout(self, context):
         logger.info("Logging out...")
         await context.send(f"Déconnexion.")

@@ -68,9 +68,8 @@ class Stats(_command.Command):
              "Si aucun nom n'est fourni, le surnom du membre du serveur appellant la commande sera utilisé.",
         ignore_extra=False,
     )
-    @commands.guild_only()
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def stats(self, context, player: typing.Union[discord.Member, str] = None):
         if not self.exp_values:
             self.exp_values = wot_utils.load_exp_values(
@@ -134,9 +133,8 @@ class Stats(_command.Command):
              "Si aucun nom n'est fourni, le surnom du membre du serveur appellant la commande sera utilisé.",
         ignore_extra=False,
     )
-    @commands.guild_only()
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def profile(self, context, player: typing.Union[discord.Member, str] = None):
         player, player_name = utils.parse_player(context.guild, player, context.author)
         player_name, player_id = wot_utils.get_exact_player_info(player_name, self.app_id)
@@ -207,9 +205,8 @@ class Stats(_command.Command):
              "sera utilisé pour chercher le clan correspondant.",
         ignore_extra=False,
     )
-    @commands.guild_only()
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def clan(self, context, clan_search_field: typing.Union[discord.Member, str] = None):
         clan_id = None
         if not clan_search_field or isinstance(clan_search_field, discord.Member):

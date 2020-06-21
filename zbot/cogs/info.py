@@ -35,7 +35,8 @@ class Info(_command.Command):
              "l'argument `--nest=level` où `level` est le nombre de niveaux à parcourir.",
         ignore_extra=False,
     )
-    @commands.check(checker.is_allowed_in_current_channel)
+    @commands.check(checker.has_no_role_requirement)
+    @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
     async def help(self, context, *, args: str = ""):
         max_nest_level = utils.get_option_value(args, 'nest')
         if max_nest_level:
@@ -149,7 +150,8 @@ class Info(_command.Command):
              "soit en développement et que la version de celui-ci ne corresponde donc pas à celle du code source.",
         ignore_extra=False,
     )
-    @commands.check(checker.is_allowed_in_current_channel)
+    @commands.check(checker.has_no_role_requirement)
+    @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
     async def version(self, context):
         bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
@@ -167,7 +169,8 @@ class Info(_command.Command):
              "Les droits d'utilisation du code source sont repris dans le fichier LICENSE.",
         ignore_extra=False,
     )
-    @commands.check(checker.is_allowed_in_current_channel)
+    @commands.check(checker.has_no_role_requirement)
+    @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
     async def source(self, context):
         bot_display_name = await self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
