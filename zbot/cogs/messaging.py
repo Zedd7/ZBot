@@ -1,15 +1,15 @@
+import asyncio
 import datetime
 import random
 
-import asyncio
 import discord
-from dateutil.relativedelta import relativedelta
 from discord.ext import commands
 from discord.ext import tasks
 
 from zbot import checker
 from zbot import converter
 from zbot import exceptions
+from zbot import logger
 from zbot import scheduler
 from zbot import utils
 from zbot import wot_utils
@@ -32,14 +32,13 @@ class Messaging(_command.Command):
     MIN_ACCOUNT_CREATION_DATE = TIMEZONE.localize(datetime.datetime(2011, 4, 11))
     CELEBRATION_CHANNEL_ID = 525037740690112527  # #général
     CELEBRATION_EMOJI = "🕯"
-    AUTOMESSAGE_FREQUENCY = relativedelta(hours=2)  # The time to wait after the last message was posted
-    AUTOMESSAGE_COOLDOWN = relativedelta(hours=12)  # The time to wait before sending two messages in a row
-    AUTOMESSAGE_DELAY = relativedelta(minutes=5)  # The time a channel must have been silent before sending a message
-    LAST_AUTOMESSAGE_ID = None
+    AUTOMESSAGE_FREQUENCY = datetime.timedelta(hours=2)  # The time to wait after the last message was posted
+    AUTOMESSAGE_COOLDOWN = datetime.timedelta(days=2)  # The time to wait before sending two messages in a row
+    AUTOMESSAGE_WAIT = datetime.timedelta(minutes=5)  # The time to wait for a channel to be quiet
 
     def __init__(self, bot):
         super().__init__(bot)
-        today = converter.get_tz_aware_local_datetime()
+        today = converter.get_tz_aware_datetime_now()
         anniversary_celebration_time = self.TIMEZONE.localize(datetime.datetime.combine(today, datetime.time(9, 0, 0)))
         last_anniversaries_celebration = zbot.db.get_metadata('last_anniversaries_celebration')
         if not last_anniversaries_celebration \
@@ -49,13 +48,14 @@ class Messaging(_command.Command):
                 self.celebrate_account_anniversaries,
                 interval=datetime.timedelta(days=1)
             )
-        zbot.db.update_metadata('last_anniversaries_celebration', today)
+        else:
+            logger.debug(f"Prevented sending anniversaries celebration because running above defined frequency.")
         self.send_automessage.start()
 
     async def celebrate_account_anniversaries(self):
         # Get anniversary data
         self.record_account_creation_dates()
-        today = converter.get_tz_aware_local_datetime()
+        today = converter.get_tz_aware_datetime_now()
         account_anniversaries = zbot.db.get_anniversary_account_ids(
             today, self.MIN_ACCOUNT_CREATION_DATE
         )
@@ -96,6 +96,8 @@ class Messaging(_command.Command):
                         f"  • {member.mention} fête ses **{year}** ans sur World of Tanks ! 🥳"
                     )
 
+        zbot.db.update_metadata('last_anniversaries_celebration', today)
+
     def record_account_creation_dates(self):
         # Build list of unrecorded members
         members = []
@@ -132,7 +134,8 @@ class Messaging(_command.Command):
         hidden=True,
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -140,15 +143,15 @@ class Messaging(_command.Command):
     @automessage.command(
         name='add',
         aliases=['new'],
-        usage='<#channel> <"message">',
+        usage="<#channel> <\"message\">",
         brief="Ajoute un nouveau message automatique",
         help="Le bot tire au sort à intervalles réguliers un message automatique parmi ceux existants et le poste dans "
              "le canal associé.",
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage_add(self, context, channel: discord.TextChannel, message: str):
         if not context.author.permissions_in(channel).send_messages:
             raise exceptions.ForbiddenChannel(channel)
@@ -173,8 +176,8 @@ class Messaging(_command.Command):
         hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage_list(self, context):
         automessage_descriptions = {}
         for automessage_data in zbot.db.load_automessages({}, ['automessage_id', 'message', 'channel_id']):
@@ -183,7 +186,7 @@ class Messaging(_command.Command):
             if len(message) > 120:  # Avoid reaching the 2000 chars limit per message
                 message = message[:120] + "..."
             channel = self.guild.get_channel(automessage_data['channel_id'])
-            automessage_descriptions[automessage_id] = f" • `[{automessage_id}]` dans {channel.mention}: {message}"
+            automessage_descriptions[automessage_id] = f" • `[{automessage_id}]` dans {channel.mention}: \"{message}\""
         embed_description = "Aucun" if not automessage_descriptions \
             else "\n".join([automessage_descriptions[automessage_id]
                             for automessage_id in sorted(automessage_descriptions.keys())])
@@ -197,93 +200,163 @@ class Messaging(_command.Command):
     @automessage.command(
         name='print',
         aliases=['p', 'test'],
-        usage="<automessage_id>",
+        usage="<automessage_id> [--raw]",
         brief="Poste un message automatique",
-        help="Le canal courant est utilisé au lieu du canal associé et toutes les vérifications sont désactivées.",
+        help="Le canal courant est utilisé au lieu du canal associé et toutes les vérifications sont désactivées. Si "
+             "l'argument `--raw` est fourni, le message est posté en texte brut.",
         hidden=True,
-        ignore_extra=False
+        ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
-    async def automessage_print(self, context, automessage_id: int):
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def automessage_print(self, context, automessage_id: int, *, options=""):
         automessages_data = zbot.db.load_automessages({'automessage_id': automessage_id}, ['message'])
         if not automessages_data:
             raise exceptions.UnknownAutomessage(automessage_id)
 
+        raw_text = utils.is_option_enabled(options, 'raw')
         message = automessages_data[0]['message']
-        await context.send(message)
+        await context.send(message if not raw_text else f"`{message}`")
 
     @automessage.command(
         name='remove',
         aliases=['r', 'delete', 'del', 'd'],
         usage="<automessage_id>",
         brief="Supprime un message automatique",
+        hidden=True,
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage_remove(self, context, automessage_id: int):
         automessages_data = zbot.db.load_automessages({}, ['_id', 'automessage_id'])
         automessage_data = [data for data in automessages_data if data['automessage_id'] == automessage_id]
         if not automessage_data:
             raise exceptions.UnknownAutomessage(automessage_id)
-        document_id = automessage_data[0]['_id']
 
-        self.remove_automessage(document_id, automessage_id, automessages_data)
-        await context.send(f"Message automatique d'identifiant `{automessage_id}` supprimé.")
-
-    @staticmethod
-    def remove_automessage(document_id, automessage_id, automessages_data):
+        document_id = automessage_data[0]['_id']  # Backup before overwrite
         automessages_update_data = {}
         for automessage_data in automessages_data:
             if automessage_data['automessage_id'] > automessage_id:
                 automessages_update_data[automessage_data['_id']] = {
                     'automessage_id': automessage_data['automessage_id'] - 1
                 }
-
         zbot.db.update_automessages(automessages_update_data)
         zbot.db.delete_automessage(document_id)
+        await context.send(f"Message automatique d'identifiant `{automessage_id}` supprimé.")
 
-    @tasks.loop(hours=AUTOMESSAGE_FREQUENCY.hours)
+    @automessage.group(
+        name='edit',
+        brief="Modifie un message automatique",
+        hidden=True,
+        invoke_without_command=True
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def automessage_edit(self, context):
+        if context.invoked_subcommand is None:
+            raise exceptions.MissingSubCommand(f'automessage {context.command.name}')
+
+    @automessage_edit.command(
+        name='channel',
+        aliases=['chan'],
+        usage="<automessage_id> <#channel>",
+        brief="Modifie le canal du message automatique",
+        help="Les futurs messages de cette entrée seront postés dans le canal fourni.",
+        hidden=True,
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def automessage_edit_channel(self, context, automessage_id: int, channel: discord.TextChannel):
+        automessages_data = zbot.db.load_automessages({'automessage_id': automessage_id}, ['_id'])
+        if not automessages_data:
+            raise exceptions.UnknownAutomessage(automessage_id)
+        if not context.author.permissions_in(channel).send_messages:
+            raise exceptions.ForbiddenChannel(channel)
+
+        document_id = automessages_data[0]['_id']
+        zbot.db.update_automessages({document_id: {'channel_id': channel.id}})
+        await context.send(f"Message automatique d'identifiant {automessage_id} lié au canal {channel.mention}.")
+
+    @automessage_edit.command(
+        name='message',
+        aliases=['m'],
+        usage="<automessage_id> <\"message\">",
+        brief="Modifie le contenu du message automatique",
+        help="Les futurs posts de cette entrée contiendront le message fourni.",
+        hidden=True,
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def automessage_edit_message(self, context, automessage_id: int, message: str):
+        automessages_data = zbot.db.load_automessages({'automessage_id': automessage_id}, ['_id'])
+        if not automessages_data:
+            raise exceptions.UnknownAutomessage(automessage_id)
+
+        document_id = automessages_data[0]['_id']
+        zbot.db.update_automessages({document_id: {'message': message}})
+        await context.send(f"Contenu du message automatique d'identifiant {automessage_id} changé en : `{message}`.")
+
+    @tasks.loop(seconds=AUTOMESSAGE_FREQUENCY.seconds)
     async def send_automessage(self):
+        last_automessage_sent = zbot.db.get_metadata('last_automessage_date')
+        if last_automessage_sent:
+            last_automessage_sent_localized = converter.to_guild_tz(last_automessage_sent)  # MongoDB uses UTC
+            if last_automessage_sent_localized >= converter.get_tz_aware_datetime_now() - self.AUTOMESSAGE_FREQUENCY:
+                logger.debug(f"Prevented sending automessage because running above defined frequency.")
+                return
+
         automessages_data = zbot.db.load_automessages(
-            {'automessage_id': {'$ne': self.LAST_AUTOMESSAGE_ID}},  # Don't post the same message twice in a row
+            {'automessage_id': {
+                '$ne': zbot.db.get_metadata('last_automessage_id')  # Don't post the same message twice in a row
+            }},
             ['automessage_id', 'channel_id', 'message']
         )
         if not automessages_data:  # At most a single automessage exists
             automessages_data = zbot.db.load_automessages(  # Load it anyway
                 {}, ['automessage_id', 'channel_id', 'message']
             )
-        if automessages_data:
-            automessage_data = random.choice(automessages_data)
-            automessage_id = automessages_data['automessage_id']
-            message = automessage_data['message']
-            channel = self.guild.get_channel(automessage_data['channel_id'])
-            last_channel_message = (await channel.history(limit=1).flatten())[0]
+        if not automessages_data:  # Not automessage exists
+            return  # Abort
 
-            if last_channel_message.author == self.user:  # Avoid spamming an channel
-                # Check if the cooldown between two bot messages has expired
-                last_channel_message_date = converter.get_tz_aware_guild_datetime(last_channel_message.created_at)
-                now = converter.get_tz_aware_local_datetime()
-                cooldown_expired = last_channel_message_date < now - self.AUTOMESSAGE_COOLDOWN
-                if not cooldown_expired:
-                    return
-            else:  # Avoid interrupting conversations
-                is_channel_quiet, attempt_count = False, 0
-                while not is_channel_quiet:  # Wait for the channel to be quiet to send the message
-                    now = converter.get_tz_aware_local_datetime()
-                    last_channel_message_date = converter.get_tz_aware_guild_datetime(last_channel_message.created_at)
-                    is_channel_quiet = last_channel_message_date < now - self.AUTOMESSAGE_DELAY
-                    if not is_channel_quiet:
-                        attempt_count = +1
-                        if attempt_count == 3:  # After 3 failed attempts, skip
-                            return
-                        else:
-                            await asyncio.sleep(self.AUTOMESSAGE_DELAY.seconds)  # Sleep for the duration of the delay
+        automessage_data = random.choice(automessages_data)
+        automessage_id = automessage_data['automessage_id']
+        message = automessage_data['message']
+        channel = self.guild.get_channel(automessage_data['channel_id'])
+        last_channel_message = (await channel.history(limit=1).flatten())[0]
+        now = converter.get_tz_aware_datetime_now()
 
-            # All checks passed, send the automessage
-            self.LAST_AUTOMESSAGE_ID = automessage_id
-            await channel.send(message)
+        if last_channel_message.author == self.user:  # Avoid spamming an channel
+            # Check if the cooldown between two bot messages has expired
+            last_channel_message_date = converter.to_guild_tz(last_channel_message.created_at)
+            cooldown_expired = last_channel_message_date < now - self.AUTOMESSAGE_COOLDOWN
+            if not cooldown_expired:
+                logger.debug(f"Skipped automessage of id {automessage_id} as cooldown has not expired yet.")
+                return
+        else:  # Avoid interrupting conversations
+            is_channel_quiet, attempt_count = False, 0
+            while not is_channel_quiet:  # Wait for the channel to be quiet to send the message
+                now = converter.get_tz_aware_datetime_now()
+                last_channel_message_date = converter.to_guild_tz(last_channel_message.created_at)
+                is_channel_quiet = last_channel_message_date < now - self.AUTOMESSAGE_WAIT
+                if not is_channel_quiet:
+                    attempt_count += 1
+                    if attempt_count < 3:
+                        logger.debug(
+                            f"Pausing automessage of id {automessage_id} for {self.AUTOMESSAGE_WAIT.seconds} "
+                            f"seconds while waiting for quietness in target channel."
+                        )
+                        await asyncio.sleep(self.AUTOMESSAGE_WAIT.seconds)  # Sleep for the duration of the delay
+                    else:  # After 3 failed attempts, skip
+                        logger.debug(f"Skipped automessage of id {automessage_id} after 3 waits for quietness.")
+                        return
+
+        # All checks passed, send the automessage
+        zbot.db.update_metadata('last_automessage_id', automessage_id)
+        zbot.db.update_metadata('last_automessage_date', now)
+        await channel.send(message)
 
     @commands.command(
         name='switch',
@@ -297,8 +370,8 @@ class Messaging(_command.Command):
              "l'argument `--ping` ou `--delete` (droits de modération requis).",
         ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_all_channels)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_all_guild_channels)
     async def switch(self, context, dest_channel: discord.TextChannel, *, options=""):
         if context.channel == dest_channel \
                 or not context.author.permissions_in(dest_channel).send_messages:
@@ -366,7 +439,8 @@ class Messaging(_command.Command):
         brief="Gère les notifications de travaux sur le bot",
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -380,8 +454,8 @@ class Messaging(_command.Command):
         hidden=True,
         ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_start(self, context):
         zbot.db.update_metadata('work_in_progress', True)
         await context.message.delete()
@@ -397,8 +471,8 @@ class Messaging(_command.Command):
         hidden=True,
         ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_done(self, context):
         zbot.db.update_metadata('work_in_progress', False)
         await context.message.delete()
@@ -413,8 +487,8 @@ class Messaging(_command.Command):
         help="Le résultat est posté dans le canal courant.",
         ignore_extra=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_status(self, context):
         work_in_progress = zbot.db.get_metadata('work_in_progress') or False  # Might not be set
         if work_in_progress:

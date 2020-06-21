@@ -49,7 +49,8 @@ class Lottery(_command.Command):
         brief="Gère les tirages au sort",
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def lottery(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -68,8 +69,8 @@ class Lottery(_command.Command):
              "ajouter l'argument `--no-announce`.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def setup(
             self, context: commands.Context,
             announce: str,
@@ -117,7 +118,9 @@ class Lottery(_command.Command):
         self.pending_lotteries[message.id] = lottery_data
 
         # Confirm command
-        await context.send(f"Tirage au sort d'identifiant `{lottery_data['lottery_id']}` programmé : <{message.jump_url}>.")
+        await context.send(
+            f"Tirage au sort d'identifiant `{lottery_data['lottery_id']}` programmé : <{message.jump_url}>."
+        )
 
     @staticmethod
     def build_announce_embed(emoji, nb_winners, organizer, time, guild_roles):
@@ -181,8 +184,8 @@ class Lottery(_command.Command):
         brief="Affiche la liste des tirages au sort en cours",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def list(self, context: commands.Context):
         lottery_descriptions, guild_id = {}, self.guild.id
         for message_id, lottery_data in self.pending_lotteries.items():
@@ -211,8 +214,8 @@ class Lottery(_command.Command):
              "sort se base dessus pour le choix des gagnants.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def pick(self, context: commands.Context, lottery_id: int, seed: int = None):
         message, _, _, _, _, organizer = await self.get_message_env(
             lottery_id, raise_if_not_found=True
@@ -255,8 +258,8 @@ class Lottery(_command.Command):
         help="Le numéro de loterie est affiché entre crochets par la commande `+lottery list`.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def cancel(self, context: commands.Context, lottery_id: int):
         message, _, emoji, _, _, organizer = await self.get_message_env(
             lottery_id, raise_if_not_found=False)
@@ -281,8 +284,8 @@ class Lottery(_command.Command):
         brief="Modifie un tirage au sort",
         invoke_without_command=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def edit(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(f'lottery {context.command.name}')
@@ -298,8 +301,8 @@ class Lottery(_command.Command):
              "Dans tous les cas, les membres du serveur ne seront pas notifiés.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def announce(
             self, context: commands.Context,
             lottery_id: int,
@@ -334,8 +337,8 @@ class Lottery(_command.Command):
              "Les réactions à l'ancien émoji ne sont pas prises en compte.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def emoji(
             self, context: commands.Context,
             lottery_id: int,
@@ -374,8 +377,8 @@ class Lottery(_command.Command):
         help="Le précédent organisateur du tirage au sort est remplacé par l'organisateur fourni.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def organizer(
             self, context: commands.Context,
             lottery_id: int,
@@ -408,8 +411,8 @@ class Lottery(_command.Command):
              "format `\"YYYY-MM-DD HH:MM:SS\"`). ",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def time(
             self, context: commands.Context,
             lottery_id: int,
@@ -446,8 +449,8 @@ class Lottery(_command.Command):
              "gagnants fourni.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def winners(
             self, context: commands.Context,
             lottery_id: int,
@@ -528,8 +531,8 @@ class Lottery(_command.Command):
              "des gagnants.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def simulate(
             self, context: commands.Context,
             src_channel: discord.TextChannel,

@@ -40,11 +40,15 @@ def humanize_datetime(time: datetime.datetime) -> str:
     return time.strftime('%d/%m/%Y à %Hh%M')
 
 
-def get_tz_aware_local_datetime() -> datetime.datetime:
+def get_tz_aware_datetime_now() -> datetime.datetime:
     return datetime.datetime.now(tzlocal())
 
 
-def get_tz_aware_guild_datetime(time: datetime.datetime) -> datetime.datetime:
+def to_community_tz(time: datetime.datetime) -> datetime.datetime:
+    return COMMUNITY_TIMEZONE.localize(time)
+
+
+def to_guild_tz(time: datetime.datetime) -> datetime.datetime:
     return GUILD_TIMEZONE.localize(time)
 
 

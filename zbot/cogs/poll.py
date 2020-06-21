@@ -48,7 +48,8 @@ class Poll(_command.Command):
         brief="Gère les sondages",
         invoke_without_command=True
     )
-    @commands.guild_only()
+    @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def poll(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(context.command.name)
@@ -71,8 +72,8 @@ class Poll(_command.Command):
              "`--pin`.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def start(
             self, context: commands.Context,
             announce: str,
@@ -229,8 +230,8 @@ class Poll(_command.Command):
         brief="Affiche la liste des sondages en cours",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def list(self, context: commands.Context):
         poll_descriptions, guild_id = {}, self.guild.id
         for message_id, poll_data in self.pending_polls.items():
@@ -258,8 +259,8 @@ class Poll(_command.Command):
         help="Force un sondage à se terminer à l'avance.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def assess(self, context: commands.Context, poll_id: int):
         message, _, _, _, _, _, organizer = await self.get_message_env(
             poll_id, raise_if_not_found=True
@@ -304,8 +305,8 @@ class Poll(_command.Command):
         help="Le numéro de sondage est affiché entre crochets par la commande `+poll list`.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def cancel(self, context: commands.Context, poll_id: int):
         message, _, emoji_list, _, _, _, organizer = await self.get_message_env(
             poll_id, raise_if_not_found=False)
@@ -333,8 +334,8 @@ class Poll(_command.Command):
         brief="Modifie un sondage",
         invoke_without_command=True
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def edit(self, context):
         if context.invoked_subcommand is None:
             raise exceptions.MissingSubCommand(f'poll {context.command.name}')
@@ -352,8 +353,8 @@ class Poll(_command.Command):
              "précédente annonce était épinglée, elle sera désépinglée).",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def announce(
             self, context: commands.Context,
             poll_id: int,
@@ -395,8 +396,8 @@ class Poll(_command.Command):
              "message fourni.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def description(self, context: commands.Context, poll_id: int, description: str):
         message, channel, _, is_exclusive, required_role_name, time, organizer = \
             await self.get_message_env(poll_id, raise_if_not_found=True)
@@ -426,8 +427,8 @@ class Poll(_command.Command):
              "émojis non repris ne sont pas prises en compte.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def emojis(
             self, context: commands.Context,
             poll_id: int,
@@ -492,8 +493,8 @@ class Poll(_command.Command):
         help="Le précédent organisateur du sondage est remplacé par l'organisateur fourni.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def organizer(
             self, context: commands.Context,
             poll_id: int,
@@ -531,8 +532,8 @@ class Poll(_command.Command):
              "format `\"YYYY-MM-DD HH:MM:SS\"`). ",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def time(
             self, context: commands.Context,
             poll_id: int,
@@ -622,8 +623,8 @@ class Poll(_command.Command):
              "respectivement ajouter les arguments `--exclusive` et `--role=\"Nom de rôle\"`.",
         ignore_extra=False
     )
-    @commands.check(checker.is_allowed_in_current_channel)
     @commands.check(checker.has_any_user_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
     async def simulate(
             self, context: commands.Context,
             src_channel: discord.TextChannel,
