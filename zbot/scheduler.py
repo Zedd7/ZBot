@@ -11,7 +11,7 @@ from . import logger
 from . import utils
 
 STORED_JOB_MISFIRE_GRACE_TIME = int(timedelta(days=2).total_seconds())
-VOLATILE_JOB_MISFIRE_GRACE_TIME = int(timedelta(hours=2).total_seconds())  # Prevent jobs > 2 hours
+VOLATILE_JOB_MISFIRE_GRACE_TIME = int(timedelta(days=1).total_seconds())
 
 scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
 

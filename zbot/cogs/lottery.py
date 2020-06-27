@@ -3,12 +3,10 @@ import random
 import typing
 
 import discord
-import emojis
 from discord.ext import commands
 
 from zbot import checker
 from zbot import converter
-from zbot import database
 from zbot import error_handler
 from zbot import exceptions
 from zbot import logger
@@ -29,18 +27,16 @@ class Lottery(_command.Command):
 
     ANNOUNCE_ROLE_NAME = 'Abonné Annonces'
     EMBED_COLOR = 0x77B255  # Four leaf clover green
-    JOBSTORE = database.MongoDBConnector.PENDING_LOTTERIES_COLLECTION
 
     pending_lotteries = {}  # Local cache of lottery data for reactions check
 
     def __init__(self, bot):
         super().__init__(bot)
         # Use class attribute to be available from static methods
-        Lottery.pending_lotteries = zbot.db.load_pending_jobs_data(
-            self.JOBSTORE,
-            data_keys=(
-                '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code', 'nb_winners',
-                'next_run_time', 'organizer_id'
+        Lottery.pending_lotteries = zbot.db.load_pending_lotteries_data(
+            (
+                '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code', 'nb_winners', 'next_run_time',
+                'organizer_id'
             )
         )
 
@@ -60,13 +56,12 @@ class Lottery(_command.Command):
         aliases=['s', 'set', 'plan'],
         usage="<\"announce\"> <#dest_channel> <:emoji:> <nb_winners> <\"time\"> [--no-announce]",
         brief="Programme un tirage au sort",
-        help="Le bot publie une **annonce** dans le **canal de destination**. Les joueurs "
-             "participent en cliquant sur l'**émoji** de réaction. À la **date et heure** "
-             "indiquées (au format `\"YYYY-MM-DD HH:MM:SS\"`), un **nombre de gagnants** sont "
-             "tirés au sort et contactés par MP par le bot. L'organisateur reçoit par MP une copie "
-             "du résultat et de la liste des participants injoignables. Par défaut, l'annonce "
-             "mentionne automatiquement le rôle `@Abonné Annonces`. Pour éviter cela, il faut "
-             "ajouter l'argument `--no-announce`.",
+        help="Le bot publie une **annonce** dans le **canal de destination**. Les joueurs participent en cliquant sur "
+             "l'**émoji** de réaction. À la **date et heure** indiquées (au format `\"YYYY-MM-DD HH:MM:SS\"`), un "
+             "**nombre de gagnants** sont tirés au sort et contactés par MP par le bot. L'organisateur reçoit par MP "
+             "une copie du résultat et de la liste des participants injoignables. Par défaut, l'annonce mentionne "
+             "automatiquement le rôle `@Abonné Annonces`. Pour éviter cela, il faut ajouter l'argument "
+             "`--no-announce`.",
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
@@ -75,22 +70,14 @@ class Lottery(_command.Command):
             self, context: commands.Context,
             announce: str,
             dest_channel: discord.TextChannel,
-            emoji: typing.Union[discord.Emoji, str],
-            nb_winners: int,
-            time: converter.to_datetime,
+            emoji: converter.to_emoji,
+            nb_winners: converter.to_positive_int,
+            time: converter.to_future_datetime,
             *, options=""
     ):
         # Check arguments
         if not context.author.permissions_in(dest_channel).send_messages:
             raise exceptions.ForbiddenChannel(dest_channel)
-        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-            raise exceptions.ForbiddenEmoji(emoji)
-        if nb_winners < 1:
-            raise exceptions.UndersizedArgument(nb_winners, 1)
-        if (time - utils.get_current_time()).total_seconds() <= 0:
-            argument_size = converter.humanize_datetime(time)
-            min_argument_size = converter.humanize_datetime(utils.get_current_time())
-            raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
         # Run command
         organizer = context.author
@@ -103,7 +90,9 @@ class Lottery(_command.Command):
         await message.add_reaction(emoji)
 
         # Register data
-        job_id = scheduler.schedule_stored_job(self.JOBSTORE, time, self.run_lottery, message.id).id
+        job_id = scheduler.schedule_stored_job(
+            zbot.db.PENDING_LOTTERIES_COLLECTION, time, self.run_lottery, message.id
+        ).id
         lottery_data = {
             'lottery_id': self.get_next_lottery_id(),
             'message_id': message.id,
@@ -112,7 +101,7 @@ class Lottery(_command.Command):
             'nb_winners': nb_winners,
             'organizer_id': organizer.id,
         }
-        zbot.db.update_job_data(self.JOBSTORE, job_id, lottery_data)
+        zbot.db.update_lottery_data(job_id, lottery_data)
         # Add data managed by scheduler later to avoid updating the database with them
         lottery_data.update({'_id': job_id, 'next_run_time': converter.to_timestamp(time)})
         self.pending_lotteries[message.id] = lottery_data
@@ -339,18 +328,12 @@ class Lottery(_command.Command):
     )
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def emoji(
-            self, context: commands.Context,
-            lottery_id: int,
-            emoji: typing.Union[discord.Emoji, str]
-    ):
+    async def emoji(self, context: commands.Context, lottery_id: int, emoji: converter.to_emoji):
         message, channel, previous_emoji, nb_winners, time, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
 
         if context.author != organizer:
             checker.has_any_mod_role(context, print_error=True)
-        if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-            raise exceptions.ForbiddenEmoji(emoji)
 
         previous_reaction = utils.try_get(
             message.reactions, error=exceptions.MissingEmoji(previous_emoji), emoji=previous_emoji
@@ -362,7 +345,7 @@ class Lottery(_command.Command):
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'emoji_code': emoji if isinstance(emoji, str) else emoji.id}
-        zbot.db.update_job_data(self.JOBSTORE, job_id, lottery_data)
+        zbot.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Émoji du tirage au sort d'identifiant `{lottery_id}` remplacé par \"{emoji}\" : "
@@ -395,7 +378,7 @@ class Lottery(_command.Command):
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'organizer_id': organizer.id}
-        zbot.db.update_job_data(self.JOBSTORE, job_id, lottery_data)
+        zbot.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Organisateur du tirage au sort d'identifiant `{lottery_id}` remplacé par "
@@ -416,17 +399,13 @@ class Lottery(_command.Command):
     async def time(
             self, context: commands.Context,
             lottery_id: int,
-            time: converter.to_datetime
+            time: converter.to_future_datetime
     ):
         message, channel, emoji, nb_winners, _, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
 
         if context.author != organizer:
             checker.has_any_mod_role(context, print_error=True)
-        if (time - utils.get_current_time()).total_seconds() <= 0:
-            argument_size = converter.humanize_datetime(time)
-            min_argument_size = converter.humanize_datetime(utils.get_current_time())
-            raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
         embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
@@ -454,22 +433,20 @@ class Lottery(_command.Command):
     async def winners(
             self, context: commands.Context,
             lottery_id: int,
-            nb_winners: int
+            nb_winners: converter.to_positive_int
     ):
         message, channel, emoji, _, time, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
 
         if context.author != organizer:
             checker.has_any_mod_role(context, print_error=True)
-        if nb_winners < 1:
-            raise exceptions.UndersizedArgument(nb_winners, 1)
 
         embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'nb_winners': nb_winners}
-        zbot.db.update_job_data(self.JOBSTORE, job_id, lottery_data)
+        zbot.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Nombre de gagnants du tirage au sort d'identifiant `{lottery_id}` changé à "
@@ -492,7 +469,7 @@ class Lottery(_command.Command):
             error=exceptions.MissingMessage(lottery_data['message_id'])
             if raise_if_not_found else None
         )
-        emoji = utils.try_get_emoji(lottery_data['emoji_code'], zbot.bot.emojis, error=None)  # TODO cancel lottery if not found
+        emoji = utils.try_get_emoji(zbot.bot.emojis, lottery_data['emoji_code'], error=None)  # TODO cancel lottery if not found
         nb_winners = lottery_data['nb_winners']
         time = converter.from_timestamp(lottery_data['next_run_time'])
         organizer = zbot.bot.get_user(lottery_data['organizer_id'])
@@ -506,11 +483,7 @@ class Lottery(_command.Command):
         for lottery_data in Lottery.pending_lotteries.values():
             if lottery_data['lottery_id'] > Lottery.pending_lotteries[message_id]['lottery_id']:
                 lottery_data['lottery_id'] -= 1
-                zbot.db.update_job_data(
-                    Lottery.JOBSTORE,
-                    lottery_data['_id'],
-                    {'lottery_id': lottery_data['lottery_id']}
-                )
+                zbot.db.update_lottery_data(lottery_data['_id'], {'lottery_id': lottery_data['lottery_id']})
         if cancel_job:
             scheduler.cancel_stored_job(Lottery.pending_lotteries[message_id]['_id'])
         del Lottery.pending_lotteries[message_id]
@@ -537,16 +510,12 @@ class Lottery(_command.Command):
             self, context: commands.Context,
             src_channel: discord.TextChannel,
             message_id: int,
-            emoji: typing.Union[discord.Emoji, str] = None,
-            nb_winners: int = 1,
+            emoji: converter.to_emoji = None,
+            nb_winners: converter.to_positive_int = 1,
             dest_channel: discord.TextChannel = None,
             organizer: discord.User = None,
             seed: int = None
     ):
-        if emoji and isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-            raise exceptions.ForbiddenEmoji(emoji)
-        if nb_winners < 1:
-            raise exceptions.UndersizedArgument(nb_winners, 1)
         if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
             raise exceptions.ForbiddenChannel(dest_channel)
 
