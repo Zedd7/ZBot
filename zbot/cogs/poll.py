@@ -2,12 +2,10 @@ import datetime
 import typing
 
 import discord
-import emojis
 from discord.ext import commands
 
 from zbot import checker
 from zbot import converter
-from zbot import database
 from zbot import error_handler
 from zbot import exceptions
 from zbot import logger
@@ -28,18 +26,16 @@ class Poll(_command.Command):
 
     ANNOUNCE_ROLE_NAME = 'Abonné Annonces'
     EMBED_COLOR = 0x9D71DC  # Pastel purple
-    JOBSTORE = database.MongoDBConnector.PENDING_POLLS_COLLECTION
 
     pending_polls = {}  # Local cache of poll data for reactions check
 
     def __init__(self, bot):
         super().__init__(bot)
         # Use class attribute to be available from static methods
-        Poll.pending_polls = zbot.db.load_pending_jobs_data(
-            self.JOBSTORE,
-            data_keys=(
-                '_id', 'poll_id', 'message_id', 'channel_id', 'emoji_codes', 'next_run_time',
-                'organizer_id', 'is_exclusive', 'required_role_name'
+        Poll.pending_polls = zbot.db.load_pending_polls_data(
+            (
+                '_id', 'poll_id', 'message_id', 'channel_id', 'emoji_codes', 'next_run_time', 'organizer_id',
+                'is_exclusive', 'required_role_name'
             )
         )
 
@@ -80,7 +76,7 @@ class Poll(_command.Command):
             description: str,
             dest_channel: discord.TextChannel,
             emoji_list: converter.to_emoji_list,
-            time: converter.to_datetime,
+            time: converter.to_future_datetime,
             *, options=""
     ):
         # Check arguments
@@ -88,13 +84,6 @@ class Poll(_command.Command):
             raise exceptions.ForbiddenChannel(dest_channel)
         if not emoji_list:
             raise commands.MissingRequiredArgument(context.command.params['emoji_list'])
-        for emoji in emoji_list:
-            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-                raise exceptions.ForbiddenEmoji(emoji)
-        if (time - utils.get_current_time()).total_seconds() <= 0:
-            argument_size = converter.humanize_datetime(time)
-            min_argument_size = converter.humanize_datetime(utils.get_current_time())
-            raise exceptions.UndersizedArgument(argument_size, min_argument_size)
         do_announce = utils.is_option_enabled(options, 'do-announce')
         do_pin = utils.is_option_enabled(options, 'pin')
         if do_announce or do_pin:
@@ -120,7 +109,7 @@ class Poll(_command.Command):
             await message.pin()
 
         # Register data
-        job_id = scheduler.schedule_stored_job(self.JOBSTORE, time, self.close_poll, message.id).id
+        job_id = scheduler.schedule_stored_job(zbot.db.PENDING_POLLS_COLLECTION, time, self.close_poll, message.id).id
         poll_data = {
             'poll_id': self.get_next_poll_id(),
             'message_id': message.id,
@@ -130,14 +119,13 @@ class Poll(_command.Command):
             'is_exclusive': is_exclusive,
             'required_role_name': required_role_name,
         }
-        zbot.db.update_job_data(self.JOBSTORE, job_id, poll_data)
+        zbot.db.update_poll_data(job_id, poll_data)
         # Add data managed by scheduler later to avoid updating the database with them
         poll_data.update({'_id': job_id, 'next_run_time': converter.to_timestamp(time)})
         self.pending_polls[message.id] = poll_data
 
         # Confirm command
         await context.send(f"Sondage d'identifiant `{poll_data['poll_id']}` programmé : <{message.jump_url}>.")
-        await context.send(f"Sondage démarré.")
 
     @staticmethod
     def build_announce_embed(
@@ -351,7 +339,7 @@ class Poll(_command.Command):
              "dans tous les cas, les membres du serveur ne seront pas notifiés). Pour épingler "
              "automatiquement l'annonce, ajoutez l'argument `--pin` (si pas spécifié et si la "
              "précédente annonce était épinglée, elle sera désépinglée).",
-        ignore_extra=False
+        ignore_extra=True
     )
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
@@ -444,9 +432,6 @@ class Poll(_command.Command):
             raise exceptions.ForbiddenChannel(channel)
         if not emoji_list:
             raise commands.MissingRequiredArgument(context.command.params['emoji_list'])
-        for emoji in emoji_list:
-            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-                raise exceptions.ForbiddenEmoji(emoji)
         required_role_name = utils.get_option_value(options, 'role')
         if required_role_name:
             utils.try_get(  # Raise if role does not exist
@@ -479,7 +464,7 @@ class Poll(_command.Command):
             'is_exclusive': is_exclusive,
             'required_role_name': required_role_name
         }
-        zbot.db.update_job_data(self.JOBSTORE, job_id, poll_data)
+        zbot.db.update_poll_data(job_id, poll_data)
         self.pending_polls[message.id].update(poll_data)
         await context.send(
             f"Émojis du sondage d'identifiant `{poll_id}` mis à jour : <{message.jump_url}>"
@@ -516,7 +501,7 @@ class Poll(_command.Command):
 
         job_id = self.pending_polls[message.id]['_id']
         poll_data = {'organizer_id': organizer.id}
-        zbot.db.update_job_data(self.JOBSTORE, job_id, poll_data)
+        zbot.db.update_poll_data(job_id, poll_data)
         self.pending_polls[message.id].update(poll_data)
         await context.send(
             f"Organisateur du sondage d'identifiant `{poll_id}` remplacé par "
@@ -537,7 +522,7 @@ class Poll(_command.Command):
     async def time(
             self, context: commands.Context,
             poll_id: int,
-            time: converter.to_datetime
+            time: converter.to_future_datetime
     ):
         message, channel, emoji_list, is_exclusive, required_role_name, _, organizer = \
             await self.get_message_env(poll_id, raise_if_not_found=True)
@@ -546,10 +531,6 @@ class Poll(_command.Command):
             checker.has_any_mod_role(context, print_error=True)
         if not context.author.permissions_in(channel).send_messages:
             raise exceptions.ForbiddenChannel(channel)
-        if (time - utils.get_current_time()).total_seconds() <= 0:
-            argument_size = converter.humanize_datetime(time)
-            min_argument_size = converter.humanize_datetime(utils.get_current_time())
-            raise exceptions.UndersizedArgument(argument_size, min_argument_size)
 
         embed = self.build_announce_embed(
             message.embeds[0].description, is_exclusive, required_role_name, organizer, time,
@@ -600,11 +581,7 @@ class Poll(_command.Command):
         for poll_data in Poll.pending_polls.values():
             if poll_data['poll_id'] > Poll.pending_polls[message_id]['poll_id']:
                 poll_data['poll_id'] -= 1
-                zbot.db.update_job_data(
-                    Poll.JOBSTORE,
-                    poll_data['_id'],
-                    {'poll_id': poll_data['poll_id']}
-                )
+                zbot.db.update_poll_data(poll_data['_id'], {'poll_id': poll_data['poll_id']})
         if cancel_job:
             scheduler.cancel_stored_job(Poll.pending_polls[message_id]['_id'])
         del Poll.pending_polls[message_id]
@@ -633,9 +610,6 @@ class Poll(_command.Command):
             dest_channel: discord.TextChannel = None,
             *, options=""
     ):
-        for emoji in emoji_list:
-            if isinstance(emoji, str) and emojis.emojis.count(emoji) != 1:
-                raise exceptions.ForbiddenEmoji(emoji)
         if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
             raise exceptions.ForbiddenChannel(dest_channel)
         is_exclusive = utils.is_option_enabled(options, 'exclusive')

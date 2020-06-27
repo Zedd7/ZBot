@@ -49,13 +49,14 @@ class Bot(_command.Command):
             except ValueError:
                 raise exceptions.MisformattedArgument(max_nest_level, "valeur entière")
         else:
-            max_nest_level = Bot.MAX_COMMAND_NEST_LEVEL
+            max_nest_level = self.MAX_COMMAND_NEST_LEVEL
         full_command_name = utils.remove_option(args, 'nest')
+
         if not full_command_name:  # No command specified
             if max_nest_level < 1:
                 raise exceptions.UndersizedArgument(max_nest_level, 1)
             await self.display_generic_help(context, max_nest_level)
-        else:  # Request help commands matching the given pattern
+        else:  # Request help for commands matching the given pattern
             command_name = full_command_name.split(' ')[-1]
             command_chain = full_command_name.split(' ')[:-1]
             matching_commands = utils.get_commands(context, command_chain, command_name)
@@ -92,18 +93,28 @@ class Bot(_command.Command):
         if group.hidden:
             checker.has_any_mod_role(context, print_error=True)
 
+        # Fetch visible subcommands
         command_list = Bot.get_command_list(group, max_nest_level)
         authorized_command_list = list(filter(
             lambda c: not c.hidden or checker.has_any_mod_role(context, print_error=False),
             command_list
         ))
         sorted_group_commands = sorted(authorized_command_list, key=lambda c: c.name)
+
+        # Compute generic command header
+        parent = group.full_parent_name
+        embed_description = f"**Description** : {group.brief}" if group.brief else ""
+        embed_description += (
+            "\n**Alias** : " + ", ".join(
+                [f"`+{(parent + ' ') if parent else ''}{alias}`" for alias in group.aliases]
+            )) if group.aliases else ""
+
+        # Append group helper
+        embed_description += "\n\n" + "\n".join(
+            [f"• `+{command}` : {command.brief}" for command in sorted_group_commands]
+        )
         embed = discord.Embed(
-            title=group.cog.DISPLAY_NAME,
-            description="\n".join([
-                f"• `+{command}` : {command.brief}" for command in sorted_group_commands
-            ]),
-            color=Bot.EMBED_COLOR
+            title=f"Commande `+{group}`", description=embed_description, color=Bot.EMBED_COLOR
         )
         await context.send(embed=embed)
 
@@ -112,17 +123,23 @@ class Bot(_command.Command):
         if command.hidden:
             checker.has_any_mod_role(context)
 
+        # Compute generic command header
         parent = command.full_parent_name
         embed_description = f"**Description** : {command.brief}" if command.brief else ""
-        embed_description += ("\n**Alias** : " +
-                              ", ".join([f"`+{(parent + ' ') if parent else ''}{alias}`" for alias in command.aliases])
-                              ) if command.aliases else ""
+        embed_description += (
+            "\n**Alias** : " + ", ".join(
+                [f"`+{(parent + ' ') if parent else ''}{alias}`" for alias in command.aliases]
+            )) if command.aliases else ""
+
+        # Append command helper
         if command.usage:
             embed_description += f"\n**Arguments** : `{command.usage}`"
             embed_description += "\n**Légende** : `<arg>` = obligatoire ; `[arg]` = facultatif ; " \
                                  "`\"arg\"` = argument devant être entouré de guillemets"
-        embed_description += f"\n\n{command.help}" if command.help else ""
-        embed = discord.Embed(title=f"Commande `+{command}`", description=embed_description, color=Bot.EMBED_COLOR)
+        embed_description += "\n\n" + command.help if command.help else ""
+        embed = discord.Embed(
+            title=f"Commande `+{command}`", description=embed_description, color=Bot.EMBED_COLOR
+        )
         await context.send(embed=embed)
 
     @staticmethod

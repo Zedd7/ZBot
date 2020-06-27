@@ -8,4 +8,5 @@ pymongo
 python-dateutil
 python-dotenv
 pytz
+matplotlib
 requests

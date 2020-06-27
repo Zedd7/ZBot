@@ -1,7 +1,5 @@
 import datetime
 import os
-from typing import Any
-from typing import Dict
 from typing import List
 from typing import Tuple
 
@@ -16,8 +14,10 @@ from . import logger
 
 class MongoDBConnector:
 
+    # TODO keep collection names in class scope but factorize
     ACCOUNT_DATA_COLLECTION = 'account_data'
     AUTOMESSAGES_COLLECTION = 'automessage'
+    MEMBER_COUNT_COLLECTION = 'member_count'
     METADATA_COLLECTION = 'metadata'  # Collection of data about bot jobs and data
     PENDING_LOTTERIES_COLLECTION = 'pending_lottery'
     PENDING_POLLS_COLLECTION = 'pending_poll'
@@ -25,6 +25,7 @@ class MongoDBConnector:
     COLLECTIONS_CONFIG = {
         ACCOUNT_DATA_COLLECTION: {},
         AUTOMESSAGES_COLLECTION: {},
+        MEMBER_COUNT_COLLECTION: {},
         METADATA_COLLECTION: {},
         PENDING_LOTTERIES_COLLECTION: {'is_jobstore': True},
         PENDING_POLLS_COLLECTION: {'is_jobstore': True},
@@ -67,6 +68,13 @@ class MongoDBConnector:
 
         return self.connected
 
+    def _load_data(self, collection_name, query, data_keys=(), **kwargs):
+        data = []
+        projection = dict.fromkeys(data_keys, 1) if data_keys else None
+        for document in self.database[collection_name].find(query, projection, **kwargs):
+            data.append({k: document[k] for k in document if (not data_keys or k in data_keys)})
+        return data
+
     # Metadata
 
     def update_metadata(self, key, value):
@@ -108,25 +116,31 @@ class MongoDBConnector:
         res = self.database[self.RECRUITMENT_ANNOUNCES_COLLECTION].delete_many(query)
         logger.debug(f"Deleted {res.deleted_count} recruitment announce(s).")
 
-    def load_recruitment_announces_data(self, query: Dict[str, Any], order: List[Tuple[str, int]]):
-        return list(self.database[self.RECRUITMENT_ANNOUNCES_COLLECTION].find(query, sort=order))
+    def load_recruitment_announces_data(self, query, order: List[Tuple[str, int]]):
+        return self._load_data(self.RECRUITMENT_ANNOUNCES_COLLECTION, query, sort=order)
 
     # Lottery, Poll
 
-    def update_job_data(self, collection_name, job_id, data):
+    def _update_job_data(self, collection_name, job_id, data):
         self.database[collection_name].update_one({'_id': job_id}, {'$set': data})
 
-    def delete_job_data(self, collection_name, job_id):
-        self.database[collection_name].delete_one({'_id': job_id})
+    def update_poll_data(self, poll_id, poll_data):
+        self._update_job_data(self.PENDING_POLLS_COLLECTION, poll_id, poll_data)
 
-    def load_pending_jobs_data(self, collection_name, data_keys):
+    def update_lottery_data(self, lottery_id, lottery_data):
+        self._update_job_data(self.PENDING_LOTTERIES_COLLECTION, lottery_id, lottery_data)
+
+    def _load_pending_jobs_data(self, collection_name, data_keys):
         pending_jobs_data = {}
-        for pending_job_data in self.database[collection_name].find({}, dict.fromkeys(data_keys, 1)):
+        for pending_job_data in self._load_data(collection_name, {}, data_keys):
             pending_jobs_data[pending_job_data['message_id']] = pending_job_data
-        logger.debug(
-            f"Loaded {len(pending_jobs_data)} pending data from collection {collection_name}: {pending_jobs_data}"
-        )
         return pending_jobs_data
+
+    def load_pending_polls_data(self, data_keys):
+        return self._load_pending_jobs_data(self.PENDING_POLLS_COLLECTION, data_keys)
+
+    def load_pending_lotteries_data(self, data_keys):
+        return self._load_pending_jobs_data(self.PENDING_LOTTERIES_COLLECTION, data_keys)
 
     # Messaging
 
@@ -159,11 +173,13 @@ class MongoDBConnector:
         account_anniversaries, display_names = {}, []
         anniversary_years = 1
         while anniversary_day >= min_account_creation_date:
-            accounts_data = self.database[self.ACCOUNT_DATA_COLLECTION].find(
+            accounts_data = self._load_data(
+                self.ACCOUNT_DATA_COLLECTION,
                 {'creation_date': {
                     '$gt': converter.to_timestamp(anniversary_day),
                     '$lt': converter.to_timestamp(day_after_anniversary)
-                }}, {'_id': 1, 'display_name': 1}
+                }},
+                ('_id', 'display_name')
             )
             for account_data in accounts_data:
                 account_anniversaries.setdefault(anniversary_years, []).append(account_data['_id'])
@@ -197,7 +213,17 @@ class MongoDBConnector:
         self.database[self.AUTOMESSAGES_COLLECTION].delete_one({'_id': document_id})
 
     def load_automessages(self, query, data_keys):
-        automessages_data = []
-        for automessage_data in self.database[self.AUTOMESSAGES_COLLECTION].find(query, dict.fromkeys(data_keys, 1)):
-            automessages_data.append({k: automessage_data[k] for k in automessage_data if k in data_keys})
-        return automessages_data
+        return self._load_data(self.AUTOMESSAGES_COLLECTION, query, data_keys)
+
+    # Server
+
+    def insert_timed_member_count(self, member_count: int, time: datetime.datetime):
+        res = self.database[self.MEMBER_COUNT_COLLECTION].insert_one({
+            'count': member_count,
+            'time': time,
+        })
+        logger.debug(f"Inserted timed member count of {member_count} members.")
+        return res.inserted_id
+
+    def load_member_counts(self, query, data_keys):
+        return self._load_data(self.MEMBER_COUNT_COLLECTION, query, data_keys)
