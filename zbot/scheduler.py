@@ -6,14 +6,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from . import converter
 from . import database
 from . import logger
-from . import utils
 
 STORED_JOB_MISFIRE_GRACE_TIME = int(timedelta(days=2).total_seconds())
 VOLATILE_JOB_MISFIRE_GRACE_TIME = int(timedelta(days=1).total_seconds())
 
-scheduler = AsyncIOScheduler(timezone=utils.TIMEZONE)
+scheduler = AsyncIOScheduler(timezone=converter.COMMUNITY_TIMEZONE)
 
 
 def setup(db: database.MongoDBConnector):

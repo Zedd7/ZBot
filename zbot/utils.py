@@ -5,13 +5,12 @@ import shlex
 import typing
 
 import discord
-import pytz
 from discord.ext import commands
 
+from . import converter
 from . import exceptions
 from . import logger
 
-TIMEZONE = pytz.timezone('Europe/Brussels')
 MAX_MESSAGE_LENGTH = 2000
 PLAYER_NAME_PATTERN = re.compile(
     r'^(\w+)'  # One-word player name
@@ -212,8 +211,27 @@ def parse_player(guild, player: typing.Union[discord.Member, str], fallback: dis
 
 # Miscellaneous
 
-def get_current_time():
-    return datetime.datetime.now(TIMEZONE)
+def com_tz_now():
+    """Return the current datetime for the community timezone."""
+    return converter.to_community_tz(datetime.datetime.now())
+
+
+def bot_tz_now():
+    """Return the current datetime for the bot timezone."""
+    return converter.to_bot_tz(datetime.datetime.now())
+
+
+def utc_now():
+    """Return the current datetime for the UTC timezone."""
+    return converter.to_utc(datetime.datetime.now())
+
+
+def is_time_elapsed(past_time, now, delay):
+    return past_time < now - delay
+
+
+def is_time_almost_elapsed(past_time, now, delay, tolerance: datetime.timedelta = datetime.timedelta(minutes=1)):
+    return is_time_elapsed(past_time, now, delay - tolerance)
 
 
 def is_option_enabled(options: str, option_name: str, has_value=False) -> bool:

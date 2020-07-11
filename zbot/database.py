@@ -18,6 +18,7 @@ class MongoDBConnector:
     ACCOUNT_DATA_COLLECTION = 'account_data'
     AUTOMESSAGES_COLLECTION = 'automessage'
     MEMBER_COUNT_COLLECTION = 'member_count'
+    MESSAGE_COUNT_COLLECTION = 'message_count'
     METADATA_COLLECTION = 'metadata'  # Collection of data about bot jobs and data
     PENDING_LOTTERIES_COLLECTION = 'pending_lottery'
     PENDING_POLLS_COLLECTION = 'pending_poll'
@@ -26,6 +27,7 @@ class MongoDBConnector:
         ACCOUNT_DATA_COLLECTION: {},
         AUTOMESSAGES_COLLECTION: {},
         MEMBER_COUNT_COLLECTION: {},
+        MESSAGE_COUNT_COLLECTION: {},
         METADATA_COLLECTION: {},
         PENDING_LOTTERIES_COLLECTION: {'is_jobstore': True},
         PENDING_POLLS_COLLECTION: {'is_jobstore': True},
@@ -165,7 +167,7 @@ class MongoDBConnector:
     ):
         # Initialize anniversary dates at midnight one year ago
         anniversary_day = converter.COMMUNITY_TIMEZONE.localize(datetime.datetime.combine(
-            reference_date.date() - relativedelta(years=1), datetime.time(0, 0)
+            reference_date.date() - relativedelta(years=1), datetime.time(0, 0)  # Use dateutil to input year in delta
         ))
         day_after_anniversary = anniversary_day + relativedelta(days=1)
 
@@ -217,13 +219,22 @@ class MongoDBConnector:
 
     # Server
 
-    def insert_timed_member_count(self, member_count: int, time: datetime.datetime):
+    def insert_timed_member_count(self, time: datetime.datetime, member_count: int):
         res = self.database[self.MEMBER_COUNT_COLLECTION].insert_one({
-            'count': member_count,
             'time': time,
+            'count': member_count,
         })
-        logger.debug(f"Inserted timed member count of {member_count} members.")
-        return res.inserted_id
+        logger.debug(f"Inserted timed member count of id {res.inserted_id}.")
 
     def load_member_counts(self, query, data_keys):
         return self._load_data(self.MEMBER_COUNT_COLLECTION, query, data_keys)
+
+    def insert_timed_message_counts(self, time: datetime.datetime, message_counts: list):
+        res = self.database[self.MESSAGE_COUNT_COLLECTION].insert_many([{
+            'time': time,
+            **message_count,
+        } for message_count in message_counts])
+        logger.debug(f"Inserted timed message counts of ids {', '.join(str(doc_id) for doc_id in res.inserted_ids)}.")
+
+    def load_message_counts(self, query, data_keys):
+        return self._load_data(self.MESSAGE_COUNT_COLLECTION, query, data_keys)

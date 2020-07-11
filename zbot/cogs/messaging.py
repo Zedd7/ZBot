@@ -28,8 +28,7 @@ class Messaging(_command.Command):
     EMBED_COLOR = 0x91b6f2  # Pastel blue
 
     PLAYER_ROLE_NAME = 'Joueur'
-    TIMEZONE = converter.COMMUNITY_TIMEZONE
-    MIN_ACCOUNT_CREATION_DATE = TIMEZONE.localize(datetime.datetime(2011, 4, 11))
+    MIN_ACCOUNT_CREATION_DATE = converter.to_community_tz(datetime.datetime(2011, 4, 11))
     CELEBRATION_CHANNEL_ID = 525037740690112527  # #général
     CELEBRATION_EMOJI = "🕯"
     AUTOMESSAGE_FREQUENCY = datetime.timedelta(hours=4)  # The time to wait after that the last message was posted
@@ -42,13 +41,17 @@ class Messaging(_command.Command):
         self.send_automessage.start()
 
     async def schedule_anniversaries_celebration(self):
-        # Silently prevent scheduling the job if it has run today to avoid the scheduler logging a warning
-        today = converter.get_tz_aware_datetime_now()
+        today = utils.com_tz_now()
         last_anniversaries_celebration = zbot.db.get_metadata('last_anniversaries_celebration')
-        if last_anniversaries_celebration and last_anniversaries_celebration.date() == today.date():
-            return
+        if last_anniversaries_celebration:
+            last_anniversaries_celebration_localized = converter.to_utc(last_anniversaries_celebration)
+            if last_anniversaries_celebration_localized.date() == converter.to_utc(today).date():
+                # Silently prevent scheduling the job if it has run today to avoid the scheduler logging a warning
+                return
 
-        anniversary_celebration_time = self.TIMEZONE.localize(datetime.datetime.combine(today, datetime.time(9, 0, 0)))
+        anniversary_celebration_time = converter.to_community_tz(
+            datetime.datetime.combine(today, datetime.time(9, 0, 0))
+        )
         scheduler.schedule_volatile_job(
             anniversary_celebration_time,
             self.celebrate_account_anniversaries,
@@ -57,15 +60,16 @@ class Messaging(_command.Command):
 
     async def celebrate_account_anniversaries(self):
         # Check if not running above frequency
-        today = converter.get_tz_aware_datetime_now()
+        today = utils.com_tz_now()
         last_anniversaries_celebration = zbot.db.get_metadata('last_anniversaries_celebration')
-        if last_anniversaries_celebration and last_anniversaries_celebration.date() == today.date():
-            logger.debug(f"Prevented sending anniversaries celebration because running above defined frequency.")
-            return
+        if last_anniversaries_celebration:
+            last_anniversaries_celebration_localized = converter.to_utc(last_anniversaries_celebration)
+            if last_anniversaries_celebration_localized.date() == converter.to_utc(today).date():
+                logger.debug(f"Prevented sending anniversaries celebration because running above defined frequency.")
+                return
 
         # Get anniversary data
         self.record_account_creation_dates()
-        today = converter.get_tz_aware_datetime_now()
         account_anniversaries = zbot.db.get_anniversary_account_ids(
             today, self.MIN_ACCOUNT_CREATION_DATE
         )
@@ -141,10 +145,11 @@ class Messaging(_command.Command):
     @tasks.loop(seconds=AUTOMESSAGE_FREQUENCY.seconds)
     async def send_automessage(self):
         # Check if not running above frequency
+        now = utils.com_tz_now()
         last_automessage_date = zbot.db.get_metadata('last_automessage_date')
         if last_automessage_date:
-            last_automessage_date_localized = converter.to_guild_tz(last_automessage_date)  # MongoDB uses UTC
-            if last_automessage_date_localized >= converter.get_tz_aware_datetime_now() - self.AUTOMESSAGE_FREQUENCY:
+            last_automessage_date_localized = converter.to_utc(last_automessage_date)
+            if not utils.is_time_almost_elapsed(last_automessage_date_localized, now, self.AUTOMESSAGE_FREQUENCY):
                 logger.debug(f"Prevented sending automessage because running above defined frequency.")
                 return
 
@@ -168,20 +173,19 @@ class Messaging(_command.Command):
         last_channel_message = (await channel.history(limit=1).flatten())[0]
 
         # Run halt checks on target channel
-        now = converter.get_tz_aware_datetime_now()
         if last_channel_message.author == self.user:  # Avoid spamming an channel
             # Check if the cooldown between two bot messages has expired
-            last_channel_message_date = converter.to_guild_tz(last_channel_message.created_at)
-            cooldown_expired = last_channel_message_date < now - self.AUTOMESSAGE_COOLDOWN
+            last_channel_message_date_localized = converter.to_utc(last_channel_message.created_at)
+            cooldown_expired = last_channel_message_date_localized < now - self.AUTOMESSAGE_COOLDOWN
             if not cooldown_expired:
                 logger.debug(f"Skipped automessage of id {automessage_id} as cooldown has not expired yet.")
                 return
         else:  # Avoid interrupting conversations
             is_channel_quiet, attempt_count = False, 0
             while not is_channel_quiet:  # Wait for the channel to be quiet to send the message
-                now = converter.get_tz_aware_datetime_now()
-                last_channel_message_date = converter.to_guild_tz(last_channel_message.created_at)
-                is_channel_quiet = last_channel_message_date < now - self.AUTOMESSAGE_WAIT
+                now = utils.com_tz_now()
+                last_channel_message_date_localized = converter.to_utc(last_channel_message.created_at)
+                is_channel_quiet = last_channel_message_date_localized < now - self.AUTOMESSAGE_WAIT
                 if not is_channel_quiet:
                     attempt_count += 1
                     if attempt_count < 3:
