@@ -472,9 +472,11 @@ class Admin(_command.Command):
         before_timespan_announces = []
         for announce in announces:
             if announce_data := author_last_announce_data.get(announce.author.id):
-                previous_announce_time = announce_data['time']
-                if previous_announce_time <= announce.created_at < previous_announce_time + min_timespan:
-                    before_timespan_announces.append((announce, previous_announce_time))
+                previous_announce_time_localized = converter.to_utc(announce_data['time'])
+                if previous_announce_time_localized \
+                        <= converter.to_utc(announce.created_at) \
+                        < previous_announce_time_localized + min_timespan:
+                    before_timespan_announces.append((announce, previous_announce_time_localized))
         if before_timespan_announces:
             for block in utils.make_message_blocks([
                 f"L'annonce de {announce.author.mention} a été postée avant le délai minimum de "

@@ -219,7 +219,7 @@ class Lottery(_command.Command):
     @staticmethod
     async def run_lottery(message_id, seed=None, manual_run=False):
         lottery_id = Lottery.pending_lotteries[message_id]['lottery_id']
-        message, channel, emoji, nb_winners, time, organizer = await Lottery.get_message_env(
+        message, channel, emoji, nb_winners, _, organizer = await Lottery.get_message_env(
             lottery_id
         )
         try:

@@ -24,7 +24,7 @@ class Stats(_command.Command):
     DISPLAY_SEQUENCE = 3
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = ['Joueur']
-    ALLOWED_CHANNELS = ['général', 'gameplay', 'mentorat', 'spam', 'zbot', 'modération', 'logs']
+    COMMAND_CHANNELS = ['général', 'gameplay', 'mentorat', 'spam', 'zbot', 'modération', 'logs']
 
     CLAN_CONTACT_ROLE_NAME = 'Contact de clan'
     EXP_VALUES_FILE_PATH = pathlib.Path('./res/wn8_exp_values.json')
@@ -175,15 +175,15 @@ class Stats(_command.Command):
         embed.add_field(name="Identifiant", value=player_details['id'])
         embed.add_field(
             name="Création du compte",
-            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['creation_timestamp']))
+            value=converter.humanize_datetime(converter.from_timestamp(player_details['creation_timestamp']))
         )
         embed.add_field(
             name="Dernière bataille",
-            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['last_battle_timestamp']))
+            value=converter.humanize_datetime(converter.from_timestamp(player_details['last_battle_timestamp']))
         )
         embed.add_field(
             name="Dernière connexion",
-            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(player_details['logout_timestamp']))
+            value=converter.humanize_datetime(converter.from_timestamp(player_details['logout_timestamp']))
         )
         if player_details['clan']:
             embed.add_field(
@@ -257,7 +257,7 @@ class Stats(_command.Command):
         )
         embed.add_field(
             name="Création du clan",
-            value=converter.humanize_datetime(datetime.datetime.fromtimestamp(clan_details['creation_timestamp']))
+            value=converter.humanize_datetime(converter.from_timestamp(clan_details['creation_timestamp']))
         )
         embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres")
         embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées")

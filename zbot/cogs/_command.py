@@ -13,7 +13,7 @@ class Command(commands.Cog):
     DISPLAY_SEQUENCE = 99
     MOD_ROLE_NAMES = ['Administrateur']
     USER_ROLE_NAMES = []
-    ALLOWED_CHANNELS = ['spam', 'zbot', 'modération', 'logs']
+    COMMAND_CHANNELS = ['spam', 'zbot', 'modération', 'logs']
     EMBED_COLOR = 0xFAA61A  # Mention message color (gold)
 
     def __init__(self, bot):

@@ -70,7 +70,7 @@ async def is_allowed_in_private_or_current_guild_channel(context):
 async def is_allowed_in_current_guild_channel(context):
     if context.channel.type.name == 'private':
         raise commands.NoPrivateMessage()
-    if context.channel.name not in context.cog.ALLOWED_CHANNELS \
+    if context.channel.name not in context.cog.COMMAND_CHANNELS \
             and not has_any_mod_role(context, print_error=False):
         try:
             await context.message.add_reaction("❌")
