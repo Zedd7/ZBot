@@ -21,18 +21,6 @@ PLAYER_NAME_PATTERN = re.compile(
 
 # Command manipulations
 
-async def send_command_usage(context, command_name) -> None:
-    command = context.command
-    if not command:
-        raise exceptions.UnknownCommand(command_name)
-    if command.usage is not None:
-        bot_user = context.bot.user
-        prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
-        await context.send(f"Syntaxe : `{prefix}{command.qualified_name} {command.usage}`")
-        await context.send(f"Aide : `{prefix}help {command.qualified_name}`")
-    else:
-        logger.warning(f"No usage defined for {command_name}")
-
 
 def get_commands(context, command_chain: typing.List[str], command_name: str) -> typing.Set[commands.Command]:
     """

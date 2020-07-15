@@ -15,6 +15,7 @@ from zbot import utils
 from zbot import wot_utils
 from zbot import zbot
 from . import _command
+from .bot import Bot
 
 
 class Messaging(_command.Command):
@@ -213,7 +214,9 @@ class Messaging(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     @automessage.command(
@@ -330,7 +333,9 @@ class Messaging(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def automessage_edit(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(f'automessage {context.command.name}')
 
     @automessage_edit.command(
