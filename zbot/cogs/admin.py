@@ -12,6 +12,7 @@ from zbot import utils
 from zbot import wot_utils
 from zbot import zbot
 from . import _command
+from .bot import Bot
 from .stats import Stats
 
 
@@ -52,7 +53,9 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     @check.command(
@@ -501,7 +504,9 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def clear(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     @clear.command(
@@ -537,7 +542,9 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def report(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     send_buffer = []  # Serves as a buffer for the message sent to the context

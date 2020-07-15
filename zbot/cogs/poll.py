@@ -13,6 +13,7 @@ from zbot import scheduler
 from zbot import utils
 from zbot import zbot
 from . import _command
+from .bot import Bot
 
 
 class Poll(_command.Command):
@@ -47,7 +48,9 @@ class Poll(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def poll(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     @poll.command(
@@ -325,7 +328,9 @@ class Poll(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def edit(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(f'poll {context.command.name}')
 
     @edit.command(

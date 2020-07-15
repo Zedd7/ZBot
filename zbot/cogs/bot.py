@@ -89,7 +89,7 @@ class Bot(_command.Command):
         await context.send(embed=embed)
 
     @staticmethod
-    async def display_group_help(context, group, max_nest_level):
+    async def display_group_help(context, group, max_nest_level=MAX_COMMAND_NEST_LEVEL):
         if group.hidden:
             checker.has_any_mod_role(context, print_error=True)
 
@@ -124,11 +124,13 @@ class Bot(_command.Command):
             checker.has_any_mod_role(context)
 
         # Compute generic command header
+        bot_user = context.bot.user
         parent = command.full_parent_name
+        prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
         embed_description = f"**Description** : {command.brief}" if command.brief else ""
         embed_description += (
             "\n**Alias** : " + ", ".join(
-                [f"`+{(parent + ' ') if parent else ''}{alias}`" for alias in command.aliases]
+                [f"`{prefix}{(parent + ' ') if parent else ''}{alias}`" for alias in command.aliases]
             )) if command.aliases else ""
 
         # Append command helper
@@ -138,9 +140,22 @@ class Bot(_command.Command):
                                  "`\"arg\"` = argument devant être entouré de guillemets"
         embed_description += "\n\n" + command.help if command.help else ""
         embed = discord.Embed(
-            title=f"Commande `+{command}`", description=embed_description, color=Bot.EMBED_COLOR
+            title=f"Commande `{prefix}{command}`", description=embed_description, color=Bot.EMBED_COLOR
         )
         await context.send(embed=embed)
+
+    @staticmethod
+    async def display_command_usage(context, command_name) -> None:
+        command = context.command
+        if not command:
+            raise exceptions.UnknownCommand(command_name)
+        if command.usage:
+            bot_user = context.bot.user
+            prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
+            await context.send(f"Syntaxe : `{prefix}{command.qualified_name} {command.usage}`")
+            await context.send(f"Aide : `{prefix}help {command.qualified_name}`")
+        else:
+            logger.warning(f"No usage defined for {command_name}")
 
     @staticmethod
     def get_command_list(command_container, max_nest_level, nest_level=0):
@@ -206,7 +221,9 @@ class Bot(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work(self, context):
-        if context.invoked_subcommand is None:
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
             raise exceptions.MissingSubCommand(context.command.name)
 
     @work.command(

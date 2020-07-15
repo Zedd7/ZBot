@@ -2,7 +2,7 @@ from discord.ext import commands
 
 from . import exceptions
 from . import logger
-from . import utils
+from .cogs.bot import Bot
 
 
 async def handle(context, error):
@@ -11,7 +11,7 @@ async def handle(context, error):
 
     if isinstance(error, commands.BadArgument):
         await context.send(f"Argument(s) incorrect(s).")
-        await utils.send_command_usage(context, context.invoked_with)
+        await Bot.display_command_usage(context, context.invoked_with)
     elif isinstance(error, commands.CommandNotFound):
         pass  # Ignore messages starting with '+'
         # Use exceptions.UnknownCommand or exceptions.MissingSubCommand for manual raise
@@ -23,17 +23,17 @@ async def handle(context, error):
         await context.send(
             f"Argument texte mal construit. "
             f"Entourez chaque texte de double guillemets `\"comme ceci\"`.")
-        await utils.send_command_usage(context, context.invoked_with)
+        await Bot.display_command_usage(context, context.invoked_with)
     elif isinstance(error, commands.MissingPermissions):
         await context.send(f"Permissions requises : {', '.join(error.missing_perms)}")
     elif isinstance(error, commands.MissingRequiredArgument):
         await context.send(f"Argument manquant : `{error.param.name}`")
-        await utils.send_command_usage(context, context.invoked_with)
+        await Bot.display_command_usage(context, context.invoked_with)
     elif isinstance(error, commands.NoPrivateMessage):
         await context.send("Cette commande ne peut pas être utilisée en message privé.")
     elif isinstance(error, commands.TooManyArguments):
         await context.send(f"Argument(s) surnuméraire(s).")
-        await utils.send_command_usage(context, context.invoked_with)
+        await Bot.display_command_usage(context, context.invoked_with)
 
     # ZBot exceptions
 
