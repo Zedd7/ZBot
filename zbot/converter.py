@@ -33,8 +33,8 @@ def to_past_datetime(arg: str):
     """Convert to datetime and check if it is in the past."""
     time = to_datetime(arg)
     if (utils.community_tz_now() - time).total_seconds() <= 0:
-        argument_size = humanize_datetime(time)
-        max_argument_size = humanize_datetime(utils.community_tz_now())
+        argument_size = to_human_format(time)
+        max_argument_size = to_human_format(utils.community_tz_now())
         raise exceptions.OversizedArgument(argument_size, max_argument_size)
     return time
 
@@ -43,8 +43,8 @@ def to_future_datetime(arg: str):
     """Convert to datetime and check if it is in the future."""
     time = to_datetime(arg)
     if (utils.community_tz_now() - time).total_seconds() > 0:
-        argument_size = humanize_datetime(time)
-        min_argument_size = humanize_datetime(utils.community_tz_now())
+        argument_size = to_human_format(time)
+        min_argument_size = to_human_format(utils.community_tz_now())
         raise exceptions.UndersizedArgument(argument_size, min_argument_size)
     return time
 
@@ -55,10 +55,6 @@ def to_timestamp(time: datetime.datetime) -> int:
 
 def from_timestamp(timestamp: int) -> datetime.datetime:
     return to_bot_tz(datetime.datetime.fromtimestamp(timestamp))
-
-
-def humanize_datetime(time: datetime.datetime) -> str:
-    return to_community_tz(time).strftime('%d/%m/%Y à %Hh%M')
 
 
 def to_bot_tz(time: datetime.datetime) -> datetime.datetime:
@@ -80,6 +76,13 @@ def to_utc(time: datetime.datetime) -> datetime.datetime:
         return DATABASE_TIMEZONE.localize(time)
     else:
         return time.astimezone(DATABASE_TIMEZONE)
+
+
+def to_human_format(time: datetime.datetime) -> str:
+    if time.hour == 0 and time.minute == 0 and time.second == 0:
+        return to_community_tz(time).strftime('%d/%m/%Y')
+    else:
+        return to_community_tz(time).strftime('%d/%m/%Y à %Hh%M')
 
 
 # Emojis

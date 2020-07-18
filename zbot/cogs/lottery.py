@@ -117,7 +117,7 @@ class Lottery(_command.Command):
     @staticmethod
     def build_announce_embed(emoji, nb_winners, organizer, time, guild_roles):
         embed = discord.Embed(
-            title=f"Tirage au sort le {converter.humanize_datetime(time)} :alarm_clock:",
+            title=f"Tirage au sort le {converter.to_human_format(time)} :alarm_clock:",
             color=Lottery.EMBED_COLOR
         )
         embed.add_field(
@@ -187,7 +187,7 @@ class Lottery(_command.Command):
             time = scheduler.get_job_run_date(lottery_data['_id'])
             message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
             lottery_descriptions[lottery_id] = f" • `[{lottery_id}]` - Programmé par {organizer.mention} " \
-                                               f"pour le [__{converter.humanize_datetime(time)}__]({message_link})"
+                                               f"pour le [__{converter.to_human_format(time)}__]({message_link})"
         embed_description = "Aucun" if not lottery_descriptions \
             else "\n".join([lottery_descriptions[lottery_id] for lottery_id in sorted(lottery_descriptions.keys())])
         embed = discord.Embed(
@@ -421,7 +421,7 @@ class Lottery(_command.Command):
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Date et heure du tirage au sort d'identifiant `{lottery_id}` changées pour le "
-            f"`{converter.humanize_datetime(time)}` : <{message.jump_url}>"
+            f"`{converter.to_human_format(time)}` : <{message.jump_url}>"
         )
 
     @edit.command(
@@ -555,7 +555,7 @@ class Lottery(_command.Command):
     async def prepare_seed(default_seed=None):
         seed = default_seed if default_seed else random.randrange(10 ** 6)  # 6 digits seed
         random.seed(seed)
-        logger.debug(f"Picking winners using seed = {seed} ({utils.get_current_time()})")
+        logger.debug(f"Picking winners using seed = {seed} ({utils.utc_now()})")
 
     @staticmethod
     async def pick_winners(guild, reaction, nb_winners, ignore_roles=False):

@@ -27,6 +27,7 @@ class Server(_command.Command):
     DISPLAY_SEQUENCE = 2
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
     USER_ROLE_NAMES = ['Joueur']
+    COMMAND_CHANNELS = ['général', 'spam', 'zbot', 'modération', 'logs']
     EMBED_COLOR = 0x91b6f2  # Pastel blue
 
     SERVER_STATS_RECORD_FREQUENCY = datetime.timedelta(hours=1)  # How often server stats are recorded
@@ -173,7 +174,7 @@ class Server(_command.Command):
         aliases=['message'],
         usage="[--time=days] [--hour|--day|--month|--year] [--split]",
         brief="Affiche le nombre de messages postés lors de la dernière heure au cours du temps",
-        help="Par défaut, une période de 3 jours est utilisée. Pour changer cela il faut fournir l'argument "
+        help="Par défaut, une période de 2 jours est utilisée. Pour changer cela il faut fournir l'argument "
              "`--time=days` où `days` est le nombre de jours à considérer. L'axe du temps est automatiquement ajusté "
              "au nombre de jours : Jusqu'à une période de 3 jours, 12 mois et 2 ans (exclus), l'axe affiche "
              "respectivement des heures, des jours et des mois. Pour forcer un type d'affichage, il faut fournir l'un "
