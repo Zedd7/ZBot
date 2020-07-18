@@ -167,7 +167,7 @@ class MongoDBConnector:
     ):
         # Initialize anniversary dates at midnight one year ago
         anniversary_day = converter.to_community_tz(datetime.datetime.combine(
-            converter.to_utc(reference_date).date() - relativedelta(years=1), datetime.time(0, 0)  # TODO check if tz are not messed up
+            converter.to_utc(reference_date).date() - relativedelta(years=1), datetime.time(0, 0)
         ))  # Use dateutil to input year in delta
         day_after_anniversary = anniversary_day + relativedelta(days=1)
 

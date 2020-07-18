@@ -484,7 +484,7 @@ class Admin(_command.Command):
             for block in utils.make_message_blocks([
                 f"L'annonce de {announce.author.mention} a été postée avant le délai minimum de "
                 f"{Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN} jours (dernière publication le "
-                f"{converter.humanize_datetime(previous_announce_time)}). : {announce.jump_url}"
+                f"{converter.to_human_format(previous_announce_time)}). : {announce.jump_url}"
                 for announce, previous_announce_time in before_timespan_announces
             ]):
                 await context.send(block)
@@ -530,7 +530,7 @@ class Admin(_command.Command):
             )
         await context.send(
             f"Le suivi des annonces de recrutement de {member.mention} a été remis à zéro."
-            + ("" if not time else f"\nBlocage des nouvelles annonces jusqu'au {converter.humanize_datetime(time)}")
+            + ("" if not time else f"\nBlocage des nouvelles annonces jusqu'au {converter.to_human_format(time)}")
         )
 
     @commands.group(

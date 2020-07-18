@@ -68,7 +68,7 @@ class Poll(_command.Command):
              "respectivement ajouter les arguments `--exclusive` et `--role=\"Nom de rôle\"`. Pour "
              "automatiquement mentionner le rôle `@Abonné Annonces`, ajoutez l'argument "
              "`--do-announce`. Pour épingler automatiquement l'annonce, ajoutez l'argument "
-             "`--pin`.",
+             "`--pin` (droits de modération requis pour ces deux derniers arguments).",
         ignore_extra=False
     )
     @commands.check(checker.has_any_user_role)
@@ -135,7 +135,7 @@ class Poll(_command.Command):
             description, is_exclusive, required_role_name, organizer, time, guild_roles
     ):
         embed = discord.Embed(
-            title=f"Clôture du sondage le {converter.humanize_datetime(time)} :alarm_clock:",
+            title=f"Clôture du sondage le {converter.to_human_format(time)} :alarm_clock:",
             description=description,
             color=Poll.EMBED_COLOR,
         )
@@ -232,7 +232,7 @@ class Poll(_command.Command):
             time = scheduler.get_job_run_date(poll_data['_id'])
             message_link = f"https://discordapp.com/channels/{guild_id}/{channel_id}/{message_id}"
             poll_descriptions[poll_id] = f" • `[{poll_id}]` - Démarré par {organizer.mention} " \
-                                         f"jusqu'au [__{converter.humanize_datetime(time)}__]({message_link})"
+                                         f"jusqu'au [__{converter.to_human_format(time)}__]({message_link})"
         embed_description = "Aucun" if not poll_descriptions \
             else "\n".join([poll_descriptions[poll_id] for poll_id in sorted(poll_descriptions.keys())])
         embed = discord.Embed(
@@ -338,12 +338,12 @@ class Poll(_command.Command):
         aliases=['annonce', 'a'],
         usage="<poll_id> <\"announce\"> [--do-announce] [--pin]",
         brief="Modifie l'annonce du sondage",
-        help="La précédente annonce associée au sondage est remplacée par le message fourni. Pour "
-             "que la nouvelle annonce mentionne automatiquement le rôle `@Abonné Annonces`, "
-             "ajoutez l'argument `--do-announce` (que la précédente annonce le fasse déjà ou pas ; "
-             "dans tous les cas, les membres du serveur ne seront pas notifiés). Pour épingler "
-             "automatiquement l'annonce, ajoutez l'argument `--pin` (si pas spécifié et si la "
-             "précédente annonce était épinglée, elle sera désépinglée).",
+        help="La précédente annonce associée au sondage est remplacée par le message fourni. Pour que la nouvelle "
+             "annonce mentionne automatiquement le rôle `@Abonné Annonces`, ajoutez l'argument `--do-announce` (que la "
+             "précédente annonce le fasse déjà ou pas ; dans tous les cas, les membres du serveur ne seront pas "
+             "notifiés). Pour épingler automatiquement l'annonce, ajoutez l'argument `--pin` (si pas spécifié et si la "
+             "précédente annonce était épinglée, elle sera désépinglée) (droits de modération requis pour ces deux "
+             "derniers arguments).",
         ignore_extra=True
     )
     @commands.check(checker.has_any_user_role)
@@ -549,7 +549,7 @@ class Poll(_command.Command):
         self.pending_polls[message.id].update(poll_data)
         await context.send(
             f"Date et heure du sondage d'identifiant `{poll_id}` changées pour le "
-            f"`{converter.humanize_datetime(time)}` : <{message.jump_url}>"
+            f"`{converter.to_human_format(time)}` : <{message.jump_url}>"
         )
 
     @staticmethod

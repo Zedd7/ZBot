@@ -175,15 +175,15 @@ class Stats(_command.Command):
         embed.add_field(name="Identifiant", value=player_details['id'])
         embed.add_field(
             name="Création du compte",
-            value=converter.humanize_datetime(converter.from_timestamp(player_details['creation_timestamp']))
+            value=converter.to_human_format(converter.from_timestamp(player_details['creation_timestamp']))
         )
         embed.add_field(
             name="Dernière bataille",
-            value=converter.humanize_datetime(converter.from_timestamp(player_details['last_battle_timestamp']))
+            value=converter.to_human_format(converter.from_timestamp(player_details['last_battle_timestamp']))
         )
         embed.add_field(
             name="Dernière connexion",
-            value=converter.humanize_datetime(converter.from_timestamp(player_details['logout_timestamp']))
+            value=converter.to_human_format(converter.from_timestamp(player_details['logout_timestamp']))
         )
         if player_details['clan']:
             embed.add_field(
@@ -257,7 +257,7 @@ class Stats(_command.Command):
         )
         embed.add_field(
             name="Création du clan",
-            value=converter.humanize_datetime(converter.from_timestamp(clan_details['creation_timestamp']))
+            value=converter.to_human_format(converter.from_timestamp(clan_details['creation_timestamp']))
         )
         embed.add_field(name="Personnel", value=f"{clan_details['members_count']} membres")
         embed.add_field(name="Postulations", value="Autorisées" if clan_details['recruiting'] else "Refusées")

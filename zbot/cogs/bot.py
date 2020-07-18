@@ -1,3 +1,5 @@
+import pathlib
+import re
 import sys
 
 import discord
@@ -8,6 +10,7 @@ from zbot import exceptions
 from zbot import logger
 from zbot import utils
 from zbot import zbot
+from zbot import converter
 from . import _command
 
 
@@ -21,7 +24,8 @@ class Bot(_command.Command):
     USER_ROLE_NAMES = ['Joueur']
     EMBED_COLOR = 0x91b6f2  # Pastel blue
 
-    MAX_COMMAND_NEST_LEVEL = 1
+    DEFAULT_HELP_NEST_LEVEL = 1
+    CHANGELOG_FILE_PATH = pathlib.Path('changelog.md')
 
     def __init__(self, bot):
         super().__init__(bot)
@@ -49,7 +53,7 @@ class Bot(_command.Command):
             except ValueError:
                 raise exceptions.MisformattedArgument(max_nest_level, "valeur entière")
         else:
-            max_nest_level = self.MAX_COMMAND_NEST_LEVEL
+            max_nest_level = self.DEFAULT_HELP_NEST_LEVEL
         full_command_name = utils.remove_option(args, 'nest')
 
         if not full_command_name:  # No command specified
@@ -63,7 +67,24 @@ class Bot(_command.Command):
             if not matching_commands:
                 raise exceptions.UnknownCommand(command_name)
             else:
-                sorted_matching_commands = sorted(matching_commands, key=lambda c: c.name)
+                # Don't show the helper of all matching commands if one matches exactly
+                if exactly_matching_commands := set(filter(
+                        lambda c: c.qualified_name == full_command_name, matching_commands
+                )):
+                    matching_commands = exactly_matching_commands
+
+                # Don't show an error for missing permissions if there is at least one public command
+                public_commands = list(filter(lambda c: not c.hidden, matching_commands))
+                if len(public_commands) < len(matching_commands):  # At least one command is hidden
+                    try:  # Don't print the error right away
+                        checker.has_any_mod_role(context)
+                    except exceptions.MissingRoles as error:
+                        if not public_commands:  # All commands requires permissions
+                            raise error  # Print the error
+                        else:  # At least one command is public
+                            matching_commands = public_commands  # Filter out hidden commands
+
+                sorted_matching_commands = sorted(matching_commands, key=lambda c: c.qualified_name)
                 for command in sorted_matching_commands:
                     if isinstance(command, commands.Group):
                         await self.display_group_help(context, command, max_nest_level)
@@ -72,14 +93,14 @@ class Bot(_command.Command):
 
     @staticmethod
     async def display_generic_help(context, max_nest_level):
-        bot_display_name = await Bot.get_bot_display_name(context.bot.user, context.guild)
+        bot_display_name = Bot.get_bot_display_name(context.bot.user, context.guild)
         embed = discord.Embed(title=f"Commandes de @{bot_display_name}", color=Bot.EMBED_COLOR)
         commands_by_cog = {}
         for command in Bot.get_command_list(context.bot, max_nest_level):
             if not command.hidden or checker.has_any_mod_role(context, print_error=False):
                 commands_by_cog.setdefault(command.cog, []).append(command)
         for cog in sorted(commands_by_cog, key=lambda c: c.DISPLAY_SEQUENCE):
-            sorted_cog_commands = sorted(commands_by_cog[cog], key=lambda c: c.name)
+            sorted_cog_commands = sorted(commands_by_cog[cog], key=lambda c: c.qualified_name)
             embed.add_field(
                 name=cog.DISPLAY_NAME,
                 value="\n".join([f"• `+{command}` : {command.brief}" for command in sorted_cog_commands]),
@@ -89,17 +110,14 @@ class Bot(_command.Command):
         await context.send(embed=embed)
 
     @staticmethod
-    async def display_group_help(context, group, max_nest_level=MAX_COMMAND_NEST_LEVEL):
-        if group.hidden:
-            checker.has_any_mod_role(context, print_error=True)
-
+    async def display_group_help(context, group, max_nest_level=DEFAULT_HELP_NEST_LEVEL):
         # Fetch visible subcommands
         command_list = Bot.get_command_list(group, max_nest_level)
         authorized_command_list = list(filter(
             lambda c: not c.hidden or checker.has_any_mod_role(context, print_error=False),
             command_list
         ))
-        sorted_group_commands = sorted(authorized_command_list, key=lambda c: c.name)
+        sorted_group_commands = sorted(authorized_command_list, key=lambda c: c.qualified_name)
 
         # Compute generic command header
         parent = group.full_parent_name
@@ -120,9 +138,6 @@ class Bot(_command.Command):
 
     @staticmethod
     async def display_command_help(context, command):
-        if command.hidden:
-            checker.has_any_mod_role(context)
-
         # Compute generic command header
         bot_user = context.bot.user
         parent = command.full_parent_name
@@ -149,13 +164,12 @@ class Bot(_command.Command):
         command = context.command
         if not command:
             raise exceptions.UnknownCommand(command_name)
-        if command.usage:
-            bot_user = context.bot.user
-            prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
-            await context.send(f"Syntaxe : `{prefix}{command.qualified_name} {command.usage}`")
-            await context.send(f"Aide : `{prefix}help {command.qualified_name}`")
-        else:
-            logger.warning(f"No usage defined for {command_name}")
+        bot_user = context.bot.user
+        prefix = f"@{bot_user.name}#{bot_user.discriminator} " if '@' in context.prefix else context.prefix
+        await context.send(
+            f"Syntaxe : `{prefix}{command.qualified_name}{f' {command.usage}' if command.usage else ''}`"
+        )
+        await context.send(f"Aide : `{prefix}help {command.qualified_name}`")
 
     @staticmethod
     def get_command_list(command_container, max_nest_level, nest_level=0):
@@ -178,21 +192,121 @@ class Bot(_command.Command):
     @commands.command(
         name='version',
         aliases=['v'],
+        usage='[--all]',
         brief="Affiche la version du bot",
         help="La version affichée est celle du bot répondant à la commande. Il se peut que le bot en cours d'exécution "
-             "soit en développement et que la version de celui-ci ne corresponde donc pas à celle du code source.",
+             "soit en développement et que la version de celui-ci ne corresponde donc pas à celle du code source. Par "
+             "défaut, seule la dernière version est affichée. Pour afficher la liste de toutes les versions, il faut "
+             "fournir l'argument `--all`.",
+        ignore_extra=True,
+    )
+    @commands.check(checker.has_no_role_requirement)
+    @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
+    async def version(self, context, *, options=''):
+        bot_display_name = self.get_bot_display_name(self.user, self.guild)
+        if not utils.is_option_enabled(options, 'all'):  # Display current version
+            current_version = zbot.__version__
+            embed = discord.Embed(title=f"Version actuelle de @{bot_display_name}", color=self.EMBED_COLOR)
+            embed.add_field(name="Numéro", value=f"**{current_version}**")
+            if changelog := self.get_changelog(current_version):
+                date_iso, description, _ = changelog
+                embed.add_field(name="Date", value=converter.to_human_format(converter.to_datetime(date_iso)))
+                embed.add_field(name="Description", value=description, inline=False)
+            embed.set_footer(text="Utilisez +changelog <version> pour plus d'informations")
+            await context.send(embed=embed)
+        else:  # Display all versions
+            versions_data = self.get_versions_data()
+            for block in utils.make_message_blocks([
+                f"v**{version}** - {converter.to_human_format(versions_data[version]['date'])}\n"
+                f"> {versions_data[version]['description']}" for version in sorted(versions_data, reverse=True)
+            ]):
+                await context.send(block)
+
+    @commands.command(
+        name='changelog',
+        aliases=['patchnote'],
+        usage="[version]",
+        brief="Affiche les changements d'une version du bot",
+        help="Si aucune version n'est spécifiée (au format `a.b.c` avec `a`, `b` et `c` des valeurs entières), la "
+             "version courante est utilisée. Les changements affichées ne concernent que les améliorations "
+             "fonctionnelles et les corrections de bug.",
         ignore_extra=False,
     )
     @commands.check(checker.has_no_role_requirement)
     @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
-    async def version(self, context):
-        bot_display_name = await self.get_bot_display_name(self.user, self.guild)
-        embed = discord.Embed(
-            title=f"Version de @{bot_display_name}",
-            description=f"**{zbot.__version__}**",
-            color=self.EMBED_COLOR
-        )
-        await context.send(embed=embed)
+    async def changelog(self, context, version: str = None):
+        current_version = zbot.__version__
+        if not version:
+            version = current_version
+        else:
+            result = re.match(r'(\d+)\.(\d+)\.(\d+)', version)
+            if not result:
+                raise exceptions.MisformattedArgument(version, 'a.b.c (a, b et c valeurs entières)')
+            major, minor, patch = (int(value) for value in result.groups())  # Cast as int to remove leading zeros
+            if self.is_out_of_version_range(major, minor, patch):
+                raise exceptions.OversizedArgument(version, current_version)
+            version = '.'.join(str(value) for value in (major, minor, patch))
+
+        changelog = self.get_changelog(version)
+        bot_display_name = self.get_bot_display_name(self.user, self.guild)
+        if not changelog:
+            await context.send(f"Aucune note de version trouvée pour @{bot_display_name} v{version}")
+        else:  # This is only executed if there is a match and if both the date and changes are present
+            date_iso, description, raw_changes = changelog
+            changes = [raw_change.lstrip('-').strip() for raw_change in raw_changes.split('\n') if raw_change]
+            embed = discord.Embed(
+                title=f"Notes de version de @{bot_display_name} v{version}",
+                description="",
+                color=self.EMBED_COLOR
+            )
+            embed.add_field(name="Date", value=converter.to_human_format(converter.to_datetime(date_iso)), inline=False)
+            description and embed.add_field(name="Description", value=description, inline=False)
+            embed.add_field(name="Changements", value='\n'.join([f"• {change}" for change in changes]), inline=False)
+            await context.send(embed=embed)
+
+    @staticmethod
+    def get_versions_data():
+        versions_data = {}
+        major, minor, patch = 1, 0, 0
+        while not Bot.is_out_of_version_range(major, minor, patch):
+            version = '.'.join(str(value) for value in (major, minor, patch))
+            if changelog := Bot.get_changelog(version):
+                date_iso, description, _ = changelog
+                versions_data[version] = {'date': converter.to_datetime(date_iso), 'description': description}
+                patch += 1
+            elif patch > 0:
+                minor += 1
+                patch = 0
+            else:
+                major += 1
+                minor = 0
+                patch = 0
+        return versions_data
+
+    @staticmethod
+    def is_out_of_version_range(major, minor, patch):
+        current_version = zbot.__version__
+        current_major, current_minor, current_patch = (int(value) for value in current_version.split('.'))
+        return major > current_major \
+            or (major == current_major and minor > current_minor) \
+            or (major == current_major and minor == current_minor and patch > current_patch)
+
+    @staticmethod
+    def get_changelog(version: str):
+        changelog = None
+        if not Bot.CHANGELOG_FILE_PATH.exists():
+            logger.warning(f"Could not find changelog file at {Bot.CHANGELOG_FILE_PATH.name}")
+        else:
+            with Bot.CHANGELOG_FILE_PATH.open(mode='r') as f:
+                file_content = f.read()
+                result = re.search(
+                    '## ' + re.escape(version) + r' - (\d{4}-\d{2}-\d{2})'  # Date in ISO format
+                                                 r'(?: - (.+))'  # One-liner description
+                                                 r'\n((?:- .+\n)+)',  # Multi-line changes
+                    file_content
+                )
+                changelog = result and result.groups()
+        return changelog
 
     @commands.command(
         name='source',
@@ -205,7 +319,7 @@ class Bot(_command.Command):
     @commands.check(checker.has_no_role_requirement)
     @commands.check(checker.is_allowed_in_private_or_current_guild_channel)
     async def source(self, context):
-        bot_display_name = await self.get_bot_display_name(self.user, self.guild)
+        bot_display_name = self.get_bot_display_name(self.user, self.guild)
         embed = discord.Embed(
             title=f"Code source de @{bot_display_name}",
             description=f"https://github.com/Zedd7/ZBot",
@@ -298,7 +412,7 @@ class Bot(_command.Command):
         sys.exit()
 
     @staticmethod
-    async def get_bot_display_name(bot_user, guild):
+    def get_bot_display_name(bot_user, guild):
         if guild:
             bot_user = guild.get_member(bot_user.id)
         return bot_user.display_name

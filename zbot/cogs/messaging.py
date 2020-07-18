@@ -43,13 +43,6 @@ class Messaging(_command.Command):
 
     async def schedule_anniversaries_celebration(self):
         today = utils.bot_tz_now()
-        last_anniversaries_celebration = zbot.db.get_metadata('last_anniversaries_celebration')
-        if last_anniversaries_celebration:
-            last_anniversaries_celebration_localized = converter.to_utc(last_anniversaries_celebration)
-            if last_anniversaries_celebration_localized.date() == converter.to_utc(today).date():
-                # Silently prevent scheduling the job if it has run today to avoid the scheduler logging a warning
-                return
-
         anniversary_celebration_time = converter.to_community_tz(
             datetime.datetime.combine(today, datetime.time(9, 0, 0))
         )
@@ -206,7 +199,7 @@ class Messaging(_command.Command):
 
     @commands.group(
         name='automessage',
-        aliases=['auto'],
+        aliases=['auto', 'automessages'],
         brief="Gère les messages automatiques",
         hidden=True,
         invoke_without_command=True
