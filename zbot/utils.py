@@ -120,8 +120,9 @@ def try_get(iterable, error: commands.CommandError = None, **filters):
             raise error
 
 
-def try_get_emoji(emojis, emoji_code: typing.Union[str, int], error: commands.CommandError = None) \
-        -> typing.Union[str, discord.Emoji] or None:
+def try_get_emoji(
+    emojis, emoji_code: typing.Union[str, int], error: commands.CommandError = None
+) -> typing.Union[str, discord.Emoji] or None:
     """
     Attempt to retrieve an emoji by code (unicode string or integer ID) and raises if not found and
     if an error is provided.
@@ -140,8 +141,8 @@ def try_get_emoji(emojis, emoji_code: typing.Union[str, int], error: commands.Co
 
 
 async def try_get_message(
-        channel: discord.TextChannel, message_id: int, error: commands.CommandError = None) \
-        -> discord.Message:
+    channel: discord.TextChannel, message_id: int, error: commands.CommandError = None
+) -> discord.Message:
     """Attempt to retrieve a message by id and raises if not found and if an error is provided."""
     try:
         message = await channel.fetch_message(message_id)

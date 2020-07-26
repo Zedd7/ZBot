@@ -87,6 +87,8 @@ class Poll(_command.Command):
             raise exceptions.ForbiddenChannel(dest_channel)
         if not emoji_list:
             raise commands.MissingRequiredArgument(context.command.params['emoji_list'])
+        if len(emoji_list) > 20:
+            raise exceptions.OversizedArgument(f"{len(emoji_list)} emojis", "20 emojis")
         do_announce = utils.is_option_enabled(options, 'do-announce')
         do_pin = utils.is_option_enabled(options, 'pin')
         if do_announce or do_pin:
@@ -437,6 +439,8 @@ class Poll(_command.Command):
             raise exceptions.ForbiddenChannel(channel)
         if not emoji_list:
             raise commands.MissingRequiredArgument(context.command.params['emoji_list'])
+        if len(emoji_list) > 20:
+            raise exceptions.OversizedArgument(f"{len(emoji_list)} emojis", "20 emojis")
         required_role_name = utils.get_option_value(options, 'role')
         if required_role_name:
             utils.try_get(  # Raise if role does not exist
@@ -635,6 +639,8 @@ class Poll(_command.Command):
                 )
             else:
                 emoji_list = [reaction.emoji for reaction in message.reactions]
+        elif len(emoji_list) > 20:
+            raise exceptions.OversizedArgument(f"{len(emoji_list)} emojis", "20 emojis")
 
         reactions, results = await Poll.count_votes(
             message, emoji_list, is_exclusive, required_role_name
