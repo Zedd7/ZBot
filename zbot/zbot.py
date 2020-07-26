@@ -13,7 +13,7 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.6.4'
+__version__ = '1.6.5'
 
 dotenv.load_dotenv()
 
@@ -39,6 +39,7 @@ bot = commands.Bot(
     case_insensitive=True,
     help_command=None,
     owner_id=OWNER_ID,
+    intents=discord.Intents.all(),
 )
 
 db = database.MongoDBConnector()

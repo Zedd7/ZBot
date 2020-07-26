@@ -3,6 +3,7 @@ import re
 from copy import copy
 
 import discord
+import typing
 from discord.ext import commands
 
 from zbot import checker
@@ -46,7 +47,7 @@ class Admin(_command.Command):
 
     @commands.group(
         name='check',
-        brief="Gère les vérifications automatiques",
+        brief="Gère les checklists de modération",
         hidden=True,
         invoke_without_command=True
     )
@@ -61,7 +62,7 @@ class Admin(_command.Command):
     @check.command(
         name='all',
         aliases=[],
-        brief="Effectue toutes les batteries de test",
+        brief="Passe en revue toutes les checklists de modération",
         hidden=True,
         ignore_extra=False
     )
@@ -81,7 +82,7 @@ class Admin(_command.Command):
     @check.command(
         name='everyone',
         aliases=[],
-        brief="Effectue une batterie de tests sur les membres du serveur",
+        brief="Passe en revue la checklist sur les membres du serveur",
         help="Pour chaque membre du serveur, il est vérifié que :\n"
              "• Le joueur possède au moins un rôle.\n"
              "• Le surnom ne comporte aucun tag de clan si le joueur n'est pas contact de clan.",
@@ -118,7 +119,7 @@ class Admin(_command.Command):
         """Check that no member has an unauthorized clan tag."""
         unauthorized_clan_tag_members = []
         for member in members:
-            if re.search(r'[ ]*[\[{].{2,5}[\]}][ ]*', member.display_name) and \
+            if re.search(r'[ ]*[\[{].{2,5}[]}][ ]*', member.display_name) and \
                     not checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
                 unauthorized_clan_tag_members.append(member)
         if unauthorized_clan_tag_members:
@@ -134,7 +135,7 @@ class Admin(_command.Command):
     @check.command(
         name='player',
         aliases=['players', 'joueur'],
-        brief="Effectue une batterie de tests sur les joueurs",
+        brief="Passe en revue la checklist sur les joueurs",
         help="Pour chaque joueur, il est vérifié que :\n"
              "• Le surnom corresponde a un pseudo WoT.\n"
              "• Il n'y a pas deux joueurs ayant le même surnom vérifié.",
@@ -210,7 +211,7 @@ class Admin(_command.Command):
     @check.command(
         name='contact',
         aliases=['contacts'],
-        brief="Effectue une batterie de tests sur les contacts de clan",
+        brief="Passe en revue la checklist sur les contacts de clan",
         help="Pour chaque clan, il est vérifié que :\n"
              "• Le surnom du contact du clan contient le tag de celui-ci\n"
              "• Pas plus d'un contact ne représente le clan\n"
@@ -316,7 +317,7 @@ class Admin(_command.Command):
         name='recruitment',
         aliases=['recruitments', 'recrutement', 'recrut'],
         usage="[\"after\"] [limit]",
-        brief="Vérifie la conformité des annonces de recrutement",
+        brief="Passe en revue la checklist sur les annonces de recrutement",
         help="Pour chaque annonce dans le canal #recrutement, il est vérifié que :\n"
              "• L'auteur de l'annonce possède le rôle @Contact de clan\n"
              "• L'auteur de l'annonce n'a pas publié d'autres annonces\n"
@@ -469,7 +470,7 @@ class Admin(_command.Command):
         # Find all existing announces that have the same author as a recent (but deleted) announce
         min_timespan = datetime.timedelta(
             # Apply a tolerance of 2 days for players interpreting the 30 days range as "one month".
-            # This is a soustraction because the resulting value is the number of days to wait before posting again.
+            # This is a subtraction because the resulting value is the number of days to wait before posting again.
             days=Admin.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN - Admin.RECRUITMENT_ANNOUNCE_TIMESPAN_TOLERANCE
         )
         before_timespan_announces = []
@@ -496,8 +497,197 @@ class Admin(_command.Command):
         return before_timespan_announces
 
     @commands.group(
+        name='inspect',
+        brief="Fourni le statut du suivi des aides à la modération",
+        hidden=True,
+        invoke_without_command=True
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def inspect(self, context):
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
+            raise exceptions.MissingSubCommand(context.command.name)
+
+    @inspect.command(
+        name='recruitment',
+        aliases=['recruitments', 'recrutement', 'recrut'],
+        usage="<@member>",
+        brief="Fourni le statut du suivi des annonces de recrutement",
+        help="Si un membre est fourni un argument, seul le suivi de ses annonces est fourni.",
+        hidden=True,
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def inspect_recruitment(self, context, member: discord.Member = None):
+        """Post the status of the recruitment announces monitoring."""
+        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        zbot.db.update_recruitment_announces(await recruitment_channel.history().flatten())
+
+        # Get the record of each author's last announce (deleted or not)
+        author_last_announce_data = {}
+        for announce_data in zbot.db.load_recruitment_announces_data(
+            query={'author': member.id} if member else {},
+            order=[('time', -1)]
+        ):
+            # Associate each author with his/her last announce data
+            if announce_data['author'] not in author_last_announce_data:
+                author_last_announce_data[announce_data['author']] = {
+                    'last_announce_time': announce_data['time'], 'message_id': announce_data['_id']
+                }
+
+        # Enhance announces data with additional information
+        min_timespan = datetime.timedelta(
+            # Apply a tolerance of 2 days for players interpreting the 30 days range as "one month".
+            # This is a subtraction because the resulting value is the number of days to wait before posting again.
+            days=self.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN - self.RECRUITMENT_ANNOUNCE_TIMESPAN_TOLERANCE
+        )
+        today = utils.bot_tz_now()
+        for author_id, announce_data in author_last_announce_data.items():
+            last_announce_time_localized = converter.to_utc(announce_data['last_announce_time'])
+            next_announce_time_localized = last_announce_time_localized + min_timespan
+            author_last_announce_data[author_id] = {
+                'last_announce_time': last_announce_time_localized,
+                'next_announce_time': next_announce_time_localized,
+                'is_time_elapsed': next_announce_time_localized <= today
+            }
+
+        # Bind the member to the announce data and order by date asc
+        member_announce_data = {
+            self.guild.get_member(author_id): _ for author_id, _ in author_last_announce_data.items()
+        }
+        filtered_member_announce_data = {
+            author: _ for author, _ in member_announce_data.items() if author is not None  # Still member of the server
+            and not checker.has_any_mod_role(context, author, print_error=False)  # Ignore moderation messages
+        }
+        ordered_member_announce_data = sorted(
+            filtered_member_announce_data.items(), key=lambda elem: elem[1]['last_announce_time']
+        )
+
+        # Post the status of announces data
+        await context.send("Statut du suivi des annonces de recrutement :")
+        for block in utils.make_message_blocks([
+            f"• {author.mention} : {converter.to_human_format(announce_data['last_announce_time'])} "
+            + ("✅" if announce_data['is_time_elapsed']
+                else f"⏳ (→ {converter.to_human_format(announce_data['next_announce_time'])})")
+            for author, announce_data in ordered_member_announce_data
+        ]):
+            await context.send(block or "Aucun suivi enregistré.")
+
+    @commands.group(
+        name='report',
+        brief="Gère les aides à la modération",
+        hidden=True,
+        invoke_without_command=True
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def report(self, context):
+        if not context.subcommand_passed:
+            await Bot.display_group_help(context, context.command)
+        else:
+            raise exceptions.MissingSubCommand(context.command.name)
+
+    send_buffer = []  # Serves as a buffer for the message sent to the context
+
+    @staticmethod
+    async def mock_send(content=None, *_args, **_kwargs):
+        """Catch all messages sent to the context whose `send` method has been matched with this."""
+        Admin.send_buffer.append(content)
+
+    @report.command(
+        name='recruitment',
+        aliases=['recruitments', 'recrutement', 'recrut'],
+        usage="<@member|announce_id> [--clear]",
+        brief="Modère une annonce de recrutement",
+        help="Si un membre est fourni un argument, sa dernière annonce de recrutement est sélectionnée.\n"
+             "Pour l'annonce de recrutement trouvée, si un problème est détecté :\n"
+             "1. L'auteur de l'annonce reçoit le rapport d'analyse, le nom du modérateur et une "
+             "copie du rendu de son annonce.\n"
+             "2. Le modérateur reçoit une copie du rapport.\n"
+             "3. L'annonce est supprimée.\n"
+             "4. Si l'argument `--clear` est fourni, le suivi des annonces est remis à zéro.",
+        hidden=True,
+        ignore_extra=False
+    )
+    @commands.check(checker.has_any_mod_role)
+    @commands.check(checker.is_allowed_in_current_guild_channel)
+    async def report_recruitment(self, context, target: typing.Union[discord.Member, int], *, options=""):
+        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+        if isinstance(target, discord.Member):
+            author = target
+            all_recruitment_announces = await recruitment_channel.history().flatten()
+            recruitment_announce = utils.try_get(all_recruitment_announces, author=author)
+        else:
+            announce_id = target
+            recruitment_announce = await utils.try_get_message(
+                recruitment_channel, announce_id, error=exceptions.MissingMessage(announce_id)
+            )
+            author = recruitment_announce.author
+        clear = utils.is_option_enabled(options, 'clear')
+
+        # Run checks
+
+        patched_context = copy(context)
+        patched_context.send = Admin.mock_send
+        Admin.send_buffer.clear()
+        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) \
+            or Admin.send_buffer.pop()
+
+        if not Admin.send_buffer:
+            await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")
+        else:
+            # DM author
+            await utils.try_dm(
+                author,
+                f"Bonjour. Il a été détecté que ton annonce de recrutement ne respectait pas le "
+                f"règlement du serveur. Voici un rapport de l'analyse effectuée: \n _ _"
+            )
+            await utils.try_dms(author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dm(
+                author,
+                f"_ _ \n"
+                f"En attendant que le problème soit réglé, ton annonce a été supprimée.\n"
+                f"En cas de besoin, tu peux contacter {context.author.mention} qui a reçu une copie du "
+                f"rapport d'analyse.\n _ _"
+            )
+            await utils.try_dm(
+                author,
+                f"Copie du contenu de l'annonce:\n _ _ \n"
+                f">>> {recruitment_announce.content}"
+            )
+
+            # DM moderator
+            await utils.try_dm(context.author, f"Rapport d'analyse envoyé à {author.mention}: \n _ _")
+            await utils.try_dms(context.author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dm(
+                context.author,
+                f"_ _ \n"
+                f"Copie du contenu de l'annonce:\n _ _ \n"
+                f">>> {recruitment_announce.content}"
+            )
+
+            # Delete announce
+            await recruitment_announce.delete()
+            await context.send(f"L'annonce a été supprimée et un rapport envoyé par MP. :ok_hand: ")
+
+            # Clear announce tracking records
+            if clear:
+                await self.clear_recruitment(context, author)
+
+    @commands.group(
         name='clear',
-        brief="Remet à zéro le suivi des modérations automatiques",
+        brief="Remet à zéro le suivi des aides à la modération",
         hidden=True,
         invoke_without_command=True
     )
@@ -532,102 +722,6 @@ class Admin(_command.Command):
             f"Le suivi des annonces de recrutement de {member.mention} a été remis à zéro."
             + ("" if not time else f"\nBlocage des nouvelles annonces jusqu'au {converter.to_human_format(time)}")
         )
-
-    @commands.group(
-        name='report',
-        brief="Gère les modérations automatiques",
-        hidden=True,
-        invoke_without_command=True
-    )
-    @commands.check(checker.has_any_mod_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def report(self, context):
-        if not context.subcommand_passed:
-            await Bot.display_group_help(context, context.command)
-        else:
-            raise exceptions.MissingSubCommand(context.command.name)
-
-    send_buffer = []  # Serves as a buffer for the message sent to the context
-
-    @staticmethod
-    async def mock_send(content=None, *_args, **_kwargs):
-        """Catch all messages sent to the context whose `send` method has been matched with this."""
-        Admin.send_buffer.append(content)
-
-    @report.command(
-        name='recruitment',
-        aliases=['recruitments', 'recrutement', 'recrut'],
-        usage="<announce_id>",
-        brief="Modère une annonce de recrutement",
-        help="Pour l'annonce de recrutement fournie, si un problème est détecté :\n"
-             "1. L'auteur de l'annonce reçoit le rapport d'analyse, le nom du modérateur et une "
-             "copie du rendu de son annonce.\n"
-             "2. Le modérateur reçoit une copie du rapport.\n"
-             "3. L'annonce est supprimée.",
-        hidden=True,
-        ignore_extra=False
-    )
-    @commands.check(checker.has_any_mod_role)
-    @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def report_recruitment(self, context, announce_id: int):
-        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
-        recruitment_announce = await utils.try_get_message(
-            recruitment_channel, announce_id, error=exceptions.MissingMessage(announce_id)
-        )
-        author = recruitment_announce.author
-
-        # Run checks
-
-        patched_context = copy(context)
-        patched_context.send = Admin.mock_send
-        Admin.send_buffer.clear()
-        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-
-        if not Admin.send_buffer:
-            await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")
-        else:
-            # DM author
-            await utils.try_dm(
-                author,
-                f"Bonjour. Il a été détecté que ton annonce de recrutement ne respectait pas le "
-                f"règlement du serveur. Voici un rapport de l'analyse effectuée: \n _ _"
-            )
-            await utils.try_dms(author, Admin.send_buffer, group_in_blocks=True)
-            await utils.try_dm(
-                author,
-                f"_ _ \n"
-                f"En attendant que le problème soit réglé, ton annonce as été supprimée.\n"
-                f"En cas de besoin, tu peux contacter {context.author.mention} qui a reçu une copie du "
-                f"rapport d'analyse.\n _ _"
-            )
-            await utils.try_dm(
-                author,
-                f"Copie du contenu de l'annonce:\n _ _ \n"
-                f">>> {recruitment_announce.content}"
-            )
-
-            # DM moderator
-            await utils.try_dm(context.author, f"Rapport d'analyse envoyé à {author.mention}: \n _ _")
-            await utils.try_dms(context.author, Admin.send_buffer, group_in_blocks=True)
-            await utils.try_dm(
-                context.author,
-                f"_ _ \n"
-                f"Copie du contenu de l'annonce:\n _ _ \n"
-                f">>> {recruitment_announce.content}"
-            )
-
-            # Delete announce
-            await recruitment_announce.delete()
-            await context.send(f"L'annonce a été supprimée et un rapport envoyé par MP. :ok_hand: ")
 
 
 def setup(bot):

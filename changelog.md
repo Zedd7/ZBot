@@ -12,6 +12,12 @@ Each changelog must be formatted as follows in order to be correctly matched:
 ```
 where `a.b.c` is the version string.
 
+## 1.6.5 - 2020-10-31 - The "Police Inspector 101" best-seller has been given to moderators.
+- Added the command `inspect` and its subcommand `inspect recruitment` to provide the status of recruitment announces monitoring.
+- Made it possible to pass a member name as argument of the command `report recruitment`.
+- Added the option `--clear` to the command `report recruitment` to clear the author announce logs.
+- Added a check to the sub-commands of the command `poll` to remain below the limit of 20 reaction emojis.
+
 ## 1.6.4 - 2020-07-25 - Changelogs were thought to be mythical creatures before this version.
 - Added the command `changelog` to display the changes brought by a specific version.
 - Added the option `--all` to the command `version` to display all existing versions.
