@@ -515,14 +515,20 @@ class Admin(_command.Command):
         aliases=['recruitments', 'recrutement', 'recrut'],
         usage="<@member>",
         brief="Fourni le statut du suivi des annonces de recrutement",
-        help="Si un membre est fourni un argument, seul le suivi de ses annonces est fourni.",
+        help="Si un membre est fourni un argument, seul le suivi de ses annonces est fourni. Par défaut, seuls les "
+             "contacts de clan actuels sont pris en compte. Pour inclure tous les membres, il faut fournir l'argument "
+             "`--all`.",
         hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def inspect_recruitment(self, context, member: discord.Member = None):
+    async def inspect_recruitment(self, context, member: typing.Union[discord.Member, str] = None, *, options=''):
         """Post the status of the recruitment announces monitoring."""
+        if isinstance(member, str):  # Option incorrectly captured as member name
+            options += f" {member}"
+            member = None
+        require_contact_role = not utils.is_option_enabled(options, 'all')
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         zbot.db.update_recruitment_announces(await recruitment_channel.history().flatten())
 
@@ -554,27 +560,31 @@ class Admin(_command.Command):
                 'is_time_elapsed': next_announce_time_localized <= today
             }
 
-        # Bind the member to the announce data and order by date asc
+        # Bind the member to the announce data, filter, and order by date asc
         member_announce_data = {
             self.guild.get_member(author_id): _ for author_id, _ in author_last_announce_data.items()
         }
         filtered_member_announce_data = {
             author: _ for author, _ in member_announce_data.items() if author is not None  # Still member of the server
             and not checker.has_any_mod_role(context, author, print_error=False)  # Ignore moderation messages
+            and (not require_contact_role or checker.has_role(author, Stats.CLAN_CONTACT_ROLE_NAME))
         }
         ordered_member_announce_data = sorted(
             filtered_member_announce_data.items(), key=lambda elem: elem[1]['last_announce_time']
         )
 
         # Post the status of announces data
-        await context.send("Statut du suivi des annonces de recrutement :")
-        for block in utils.make_message_blocks([
-            f"• {author.mention} : {converter.to_human_format(announce_data['last_announce_time'])} "
-            + ("✅" if announce_data['is_time_elapsed']
-                else f"⏳ (→ {converter.to_human_format(announce_data['next_announce_time'])})")
-            for author, announce_data in ordered_member_announce_data
-        ]):
-            await context.send(block or "Aucun suivi enregistré.")
+        if ordered_member_announce_data:
+            await context.send("Statut du suivi des annonces de recrutement :")
+            for block in utils.make_message_blocks([
+                f"• {author.mention} : {converter.to_human_format(announce_data['last_announce_time'])} "
+                + ("✅" if announce_data['is_time_elapsed']
+                    else f"⏳ (→ {converter.to_human_format(announce_data['next_announce_time'])})")
+                for author, announce_data in ordered_member_announce_data
+            ]):
+                await context.send(block)
+        else:
+            await context.send("Aucun suivi enregistré.")
 
     @commands.group(
         name='report',

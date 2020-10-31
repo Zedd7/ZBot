@@ -12,6 +12,10 @@ Each changelog must be formatted as follows in order to be correctly matched:
 ```
 where `a.b.c` is the version string.
 
+## 1.6.6 - X - X.
+- Made the command `inspect recruitment` exclude members that are no longer clan contacts.
+- Added the option `--all` to the command `inspect recruitment` to include all members no matter the role.
+
 ## 1.6.5 - 2020-10-31 - The "Police Inspector 101" best-seller has been given to moderators.
 - Added the command `inspect` and its subcommand `inspect recruitment` to provide the status of recruitment announces monitoring.
 - Made it possible to pass a member name as argument of the command `report recruitment`.
