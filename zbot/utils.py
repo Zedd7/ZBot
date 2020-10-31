@@ -109,7 +109,7 @@ def make_announce(guild, announce: str, announce_role_name: str = None) -> str:
 # Safe utilities
 
 def try_get(iterable, error: commands.CommandError = None, **filters):
-    """Attempt to find a element and raises if not found and if an error is provided."""
+    """Attempt to find a first matching element and raises if not found and if an error is provided."""
     try:
         result = discord.utils.get(iterable, **filters)
         if not result and error:

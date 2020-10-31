@@ -69,7 +69,7 @@ class Bot(_command.Command):
             else:
                 # Don't show the helper of all matching commands if one matches exactly
                 if exactly_matching_commands := set(filter(
-                        lambda c: c.qualified_name == full_command_name, matching_commands
+                    lambda c: c.qualified_name == full_command_name, matching_commands
                 )):
                     matching_commands = exactly_matching_commands
 
@@ -84,6 +84,7 @@ class Bot(_command.Command):
                         else:  # At least one command is public
                             matching_commands = public_commands  # Filter out hidden commands
 
+                # Show the helper of matching commands
                 sorted_matching_commands = sorted(matching_commands, key=lambda c: c.qualified_name)
                 for command in sorted_matching_commands:
                     if isinstance(command, commands.Group):
@@ -253,7 +254,7 @@ class Bot(_command.Command):
             await context.send(f"Aucune note de version trouvée pour @{bot_display_name} v{version}")
         else:  # This is only executed if there is a match and if both the date and changes are present
             date_iso, description, raw_changes = changelog
-            changes = [raw_change.lstrip('-').strip() for raw_change in raw_changes.split('\n') if raw_change]
+            changes = [raw_change.removeprefix('- ') for raw_change in raw_changes.split('\n') if raw_change]
             embed = discord.Embed(
                 title=f"Notes de version de @{bot_display_name} v{version}",
                 description="",

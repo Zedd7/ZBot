@@ -13,7 +13,7 @@ from . import error_handler
 from . import logger
 from . import scheduler
 
-__version__ = '1.6.5'
+__version__ = '1.6.6'
 
 dotenv.load_dotenv()
 
@@ -25,6 +25,7 @@ COGS = [
     'zbot.cogs.poll',
     'zbot.cogs.messaging',
     'zbot.cogs.server',
+    'zbot.cogs.special',
     'zbot.cogs.stats',
 ]
 
