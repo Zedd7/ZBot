@@ -21,7 +21,7 @@ class Lottery(_command.Command):
 
     """Commands for management of lotteries."""
 
-    DISPLAY_NAME = "Loteries & Tirages au sort"
+    DISPLAY_NAME = "Loteries et tirages au sort"
     DISPLAY_SEQUENCE = 5
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur', 'Annonceur']
     USER_ROLE_NAMES = ['Joueur']
@@ -70,13 +70,13 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def setup(
-            self, context: commands.Context,
-            announce: str,
-            dest_channel: discord.TextChannel,
-            emoji: converter.to_emoji,
-            nb_winners: converter.to_positive_int,
-            time: converter.to_future_datetime,
-            *, options=""
+        self, context: commands.Context,
+        announce: str,
+        dest_channel: discord.TextChannel,
+        emoji: converter.to_emoji,
+        nb_winners: converter.to_positive_int,
+        time: converter.to_future_datetime,
+        *, options=""
     ):
         # Check arguments
         if not context.author.permissions_in(dest_channel).send_messages:
@@ -298,10 +298,10 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def announce(
-            self, context: commands.Context,
-            lottery_id: int,
-            announce: str,
-            *, options=""
+        self, context: commands.Context,
+        lottery_id: int,
+        announce: str,
+        *, options=""
     ):
         message, channel, _, _, _, organizer = await self.get_message_env(
             lottery_id, raise_if_not_found=True
@@ -368,9 +368,9 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def organizer(
-            self, context: commands.Context,
-            lottery_id: int,
-            organizer: discord.User
+        self, context: commands.Context,
+        lottery_id: int,
+        organizer: discord.User
     ):
         message, channel, emoji, nb_winners, time, previous_organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
@@ -402,9 +402,9 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def time(
-            self, context: commands.Context,
-            lottery_id: int,
-            time: converter.to_future_datetime
+        self, context: commands.Context,
+        lottery_id: int,
+        time: converter.to_future_datetime
     ):
         message, channel, emoji, nb_winners, _, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
@@ -436,9 +436,9 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def winners(
-            self, context: commands.Context,
-            lottery_id: int,
-            nb_winners: converter.to_positive_int
+        self, context: commands.Context,
+        lottery_id: int,
+        nb_winners: converter.to_positive_int
     ):
         message, channel, emoji, _, time, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
@@ -459,9 +459,9 @@ class Lottery(_command.Command):
         )
 
     @staticmethod
-    async def get_message_env(lottery_id: int, raise_if_not_found=True) -> \
-            (discord.Message, discord.TextChannel, typing.Union[str, discord.Emoji],
-             datetime.datetime, str, discord.Member):
+    async def get_message_env(lottery_id: int, raise_if_not_found=True) -> (
+        discord.Message, discord.TextChannel, typing.Union[str, discord.Emoji], datetime.datetime, str, discord.Member
+    ):
         if not (lottery_data := discord.utils.find(
                 lambda data: data['lottery_id'] == lottery_id,
                 Lottery.pending_lotteries.values()
@@ -512,14 +512,14 @@ class Lottery(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def simulate(
-            self, context: commands.Context,
-            src_channel: discord.TextChannel,
-            message_id: int,
-            emoji: converter.to_emoji = None,
-            nb_winners: converter.to_positive_int = 1,
-            dest_channel: discord.TextChannel = None,
-            organizer: discord.User = None,
-            seed: int = None
+        self, context: commands.Context,
+        src_channel: discord.TextChannel,
+        message_id: int,
+        emoji: converter.to_emoji = None,
+        nb_winners: converter.to_positive_int = 1,
+        dest_channel: discord.TextChannel = None,
+        organizer: discord.User = None,
+        seed: int = None
     ):
         if dest_channel and not context.author.permissions_in(dest_channel).send_messages:
             raise exceptions.ForbiddenChannel(dest_channel)
@@ -570,8 +570,7 @@ class Lottery(_command.Command):
 
     @staticmethod
     async def announce_winners(
-            winners: [discord.User], players: [discord.User], message,
-            organizer: discord.User = None
+        winners: [discord.User], players: [discord.User], message, organizer: discord.User = None
     ):
         embed = discord.Embed(
             title="Résultats du tirage au sort 🎉",

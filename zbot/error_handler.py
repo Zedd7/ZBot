@@ -55,7 +55,10 @@ async def handle(context, error):
     elif isinstance(error, exceptions.MissingEmoji):
         await context.send(f"Cet emoji n'a pas été trouvé : {error.missing_emoji}")
     elif isinstance(error, exceptions.MissingMessage):
-        await context.send(f"Aucun message trouvé pour l'id : `{error.missing_message_id}`")
+        if error.missing_message_id:
+            await context.send(f"Aucun message trouvé pour l'id : `{error.missing_message_id}`")
+        else:
+            await context.send("Aucun message trouvé.")
     elif isinstance(error, exceptions.MissingRoles):
         await context.send(f"Rôle(s) requis : {', '.join([f'@{r}' for r in error.missing_roles])}")
     elif isinstance(error, exceptions.MissingSubCommand):

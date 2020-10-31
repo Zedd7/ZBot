@@ -12,6 +12,15 @@ Each changelog must be formatted as follows in order to be correctly matched:
 ```
 where `a.b.c` is the version string.
 
+## 1.6.6 - 2021-07-04 - Help to prevent depression among our moderators by following the server rules.
+- Added the command `validate` and its subcommand `validate announce` to help clan contacts check that their announce follows the server rules.
+- Made the command `inspect recruitment` exclude members that are no longer clan contacts.
+- Added the option `--all` to the command `inspect recruitment` to include all members no matter the role.
+- Added the aliases 'announce' and 'annonce' to all commands named 'recruitment'.
+- Added a mention of the command 'validate announce' to the analysis report sent to the clan contact by the command `report recruitment`.
+- Fixed the command `report recruitment` not mentioning duplicate announces.
+- Fixed the command `report recruitment` crashing if the clan contact had deleted all their announce before running the command.
+
 ## 1.6.5 - 2020-10-31 - The "Police Inspector 101" best-seller has been given to moderators.
 - Added the command `inspect` and its subcommand `inspect recruitment` to provide the status of recruitment announces monitoring.
 - Made it possible to pass a member name as argument of the command `report recruitment`.
@@ -42,7 +51,7 @@ where `a.b.c` is the version string.
 - Fixed commands `check recruitment` and `report recruitment` treating announces posted before the last registration date of a deleted announce as illegal.
 - Fixed command `lottery cancel` crash.
 
-## 1.6.0 - 2020-06-27 - How many members per role ?
+## 1.6.0 - 2020-06-27 - How many members per role?
 - Added the command `members` to display the number of members per role.
 
 ## 1.5.5 - 2020-06-21 - Edit existing automessages.

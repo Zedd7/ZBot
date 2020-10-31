@@ -24,7 +24,6 @@ class Admin(_command.Command):
     DISPLAY_NAME = "Administration"
     DISPLAY_SEQUENCE = 10
     MOD_ROLE_NAMES = ['Administrateur', 'Modérateur']
-    USER_ROLE_NAMES = []
 
     PLAYER_ROLE_NAME = 'Joueur'
     BATCH_SIZE = 24
@@ -315,7 +314,7 @@ class Admin(_command.Command):
 
     @check.command(
         name='recruitment',
-        aliases=['recruitments', 'recrutement', 'recrut'],
+        aliases=['recruitments', 'recrutement', 'recrut', 'announce', 'annonce'],
         usage="[\"after\"] [limit]",
         brief="Passe en revue la checklist sur les annonces de recrutement",
         help="Pour chaque annonce dans le canal #recrutement, il est vérifié que :\n"
@@ -334,10 +333,10 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_recruitments(
-            self, context,
-            after: converter.to_past_datetime = converter.to_datetime('1970-01-01'),
-            limit: converter.to_positive_int = 100,
-            add_reaction=True
+        self, context,
+        after: converter.to_past_datetime = converter.to_datetime('1970-01-01'),
+        limit: converter.to_positive_int = 100,
+        add_reaction=True
     ):
         add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
 
@@ -368,7 +367,7 @@ class Admin(_command.Command):
     async def check_authors_clan_contact_role(context, announces):
         """Check that all announce authors have the clan contact role."""
         if missing_clan_contact_role_announces := list(filter(
-                lambda a: not checker.has_guild_role(context.guild, a.author, Stats.CLAN_CONTACT_ROLE_NAME), announces
+            lambda a: not checker.has_guild_role(context.guild, a.author, Stats.CLAN_CONTACT_ROLE_NAME), announces
         )):
             for block in utils.make_message_blocks([
                 f"{announce.author.mention} ne possède pas le rôle @{Stats.CLAN_CONTACT_ROLE_NAME} nécessaire à la "
@@ -402,14 +401,9 @@ class Admin(_command.Command):
     @staticmethod
     async def check_recruitment_announces_length(context, announces):
         """Check that no recruitment announce is too long."""
-        code_block_pattern = re.compile(r'^[^a-zA-Z0-9`]+```.*')
         too_long_announces = []
         for announce in announces:
-            if (apparent_length := sum([
-                max(len(line), Admin.MIN_RECRUITMENT_LINE_LENGTH)
-                for line in announce.content.split('\n')
-                if not code_block_pattern.match(line)  # Ignore line starting with code block statements
-            ])) > Admin.MAX_RECRUITMENT_ANNOUNCE_LENGTH:
+            if (apparent_length := Admin.compute_apparent_length(announce)) > Admin.MAX_RECRUITMENT_ANNOUNCE_LENGTH:
                 too_long_announces.append((announce, apparent_length))
         if too_long_announces:
             await context.send(
@@ -425,6 +419,14 @@ class Admin(_command.Command):
         else:
             await context.send("Toutes les annonces de recrutement sont de longueur réglementaire. :ok_hand: ")
         return too_long_announces
+
+    @staticmethod
+    def compute_apparent_length(announce):
+        return sum([
+            max(len(line), Admin.MIN_RECRUITMENT_LINE_LENGTH)
+            for line in announce.content.split('\n')
+            if not re.match(r'^[^a-zA-Z0-9`]+```.*', line)  # Ignore line starting with code block statements
+        ])
 
     @staticmethod
     async def check_recruitment_announces_embeds(context, announces):
@@ -512,17 +514,23 @@ class Admin(_command.Command):
 
     @inspect.command(
         name='recruitment',
-        aliases=['recruitments', 'recrutement', 'recrut'],
-        usage="<@member>",
+        aliases=['recruitments', 'recrutement', 'recrut', 'announce', 'annonce'],
+        usage="[@member] [--all]",
         brief="Fourni le statut du suivi des annonces de recrutement",
-        help="Si un membre est fourni un argument, seul le suivi de ses annonces est fourni.",
+        help="Si un membre est fourni un argument, seul le suivi de ses annonces est fourni. Par défaut, seuls les "
+             "contacts de clan actuels sont pris en compte. Pour inclure tous les membres, il faut fournir l'argument "
+             "`--all`.",
         hidden=True,
         ignore_extra=False
     )
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def inspect_recruitment(self, context, member: discord.Member = None):
+    async def inspect_recruitment(self, context, member: typing.Union[discord.Member, str] = None, *, options=''):
         """Post the status of the recruitment announces monitoring."""
+        if isinstance(member, str):  # Option mistakenly captured as member name
+            options += f" {member}"
+            member = None
+        require_contact_role = not utils.is_option_enabled(options, 'all')
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         zbot.db.update_recruitment_announces(await recruitment_channel.history().flatten())
 
@@ -554,27 +562,31 @@ class Admin(_command.Command):
                 'is_time_elapsed': next_announce_time_localized <= today
             }
 
-        # Bind the member to the announce data and order by date asc
+        # Bind the member to the announce data, filter, and order by date asc
         member_announce_data = {
             self.guild.get_member(author_id): _ for author_id, _ in author_last_announce_data.items()
         }
         filtered_member_announce_data = {
             author: _ for author, _ in member_announce_data.items() if author is not None  # Still member of the server
             and not checker.has_any_mod_role(context, author, print_error=False)  # Ignore moderation messages
+            and (not require_contact_role or checker.has_role(author, Stats.CLAN_CONTACT_ROLE_NAME))
         }
         ordered_member_announce_data = sorted(
             filtered_member_announce_data.items(), key=lambda elem: elem[1]['last_announce_time']
         )
 
         # Post the status of announces data
-        await context.send("Statut du suivi des annonces de recrutement :")
-        for block in utils.make_message_blocks([
-            f"• {author.mention} : {converter.to_human_format(announce_data['last_announce_time'])} "
-            + ("✅" if announce_data['is_time_elapsed']
-                else f"⏳ (→ {converter.to_human_format(announce_data['next_announce_time'])})")
-            for author, announce_data in ordered_member_announce_data
-        ]):
-            await context.send(block or "Aucun suivi enregistré.")
+        if ordered_member_announce_data:
+            await context.send("Statut du suivi des annonces de recrutement :")
+            for block in utils.make_message_blocks([
+                f"• {author.mention} : {converter.to_human_format(announce_data['last_announce_time'])} "
+                + ("✅" if announce_data['is_time_elapsed']
+                    else f"⏳ (→ {converter.to_human_format(announce_data['next_announce_time'])})")
+                for author, announce_data in ordered_member_announce_data
+            ]):
+                await context.send(block)
+        else:
+            await context.send("Aucun suivi enregistré.")
 
     @commands.group(
         name='report',
@@ -599,7 +611,7 @@ class Admin(_command.Command):
 
     @report.command(
         name='recruitment',
-        aliases=['recruitments', 'recrutement', 'recrut'],
+        aliases=['recruitments', 'recrutement', 'recrut', 'announce', 'annonce'],
         usage="<@member|announce_id> [--clear]",
         brief="Modère une annonce de recrutement",
         help="Si un membre est fourni un argument, sa dernière annonce de recrutement est sélectionnée.\n"
@@ -618,33 +630,38 @@ class Admin(_command.Command):
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         if isinstance(target, discord.Member):
             author = target
-            all_recruitment_announces = await recruitment_channel.history().flatten()
-            recruitment_announce = utils.try_get(all_recruitment_announces, author=author)
+            all_recruitment_announces = await recruitment_channel.history(oldest_first=False).flatten()
+            recruitment_announces = list(filter(lambda a: a.author == author, all_recruitment_announces))
+            last_recruitment_announce = recruitment_announces and recruitment_announces[0]
         else:
             announce_id = target
-            recruitment_announce = await utils.try_get_message(
+            last_recruitment_announce = await utils.try_get_message(
                 recruitment_channel, announce_id, error=exceptions.MissingMessage(announce_id)
             )
-            author = recruitment_announce.author
+            recruitment_announces = [last_recruitment_announce]
+            author = last_recruitment_announce.author
         clear = utils.is_option_enabled(options, 'clear')
 
+        if not last_recruitment_announce:
+            raise exceptions.MissingMessage(missing_message_id=None)
+
         # Run checks
-
         patched_context = copy(context)
-        patched_context.send = Admin.mock_send
-        Admin.send_buffer.clear()
-        await self.check_authors_clan_contact_role(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_uniqueness(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_length(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_embeds(patched_context, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
-        await self.check_recruitment_announces_timespan(patched_context, recruitment_channel, [recruitment_announce]) \
-            or Admin.send_buffer.pop()
+        patched_context.send = self.mock_send
+        self.send_buffer.clear()
+        await self.check_authors_clan_contact_role(patched_context, [last_recruitment_announce]) \
+            or self.send_buffer.pop()
+        await self.check_recruitment_announces_uniqueness(patched_context, recruitment_announces) \
+            or self.send_buffer.pop()
+        await self.check_recruitment_announces_length(patched_context, [last_recruitment_announce]) \
+            or self.send_buffer.pop()
+        await self.check_recruitment_announces_embeds(patched_context, [last_recruitment_announce]) \
+            or self.send_buffer.pop()
+        await self.check_recruitment_announces_timespan(
+            patched_context, recruitment_channel, [last_recruitment_announce]
+        ) or self.send_buffer.pop()
 
-        if not Admin.send_buffer:
+        if not self.send_buffer:
             await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")
         else:
             # DM author
@@ -653,32 +670,34 @@ class Admin(_command.Command):
                 f"Bonjour. Il a été détecté que ton annonce de recrutement ne respectait pas le "
                 f"règlement du serveur. Voici un rapport de l'analyse effectuée: \n _ _"
             )
-            await utils.try_dms(author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dms(author, self.send_buffer, group_in_blocks=True)
             await utils.try_dm(
                 author,
                 f"_ _ \n"
                 f"En attendant que le problème soit réglé, ton annonce a été supprimée.\n"
                 f"En cas de besoin, tu peux contacter {context.author.mention} qui a reçu une copie du "
-                f"rapport d'analyse.\n _ _"
+                f"rapport d'analyse.\n"
+                f"Pour éviter ce genre de désagrément, vérifie que ton annonce respecte le règlement en utilisant la "
+                f"commande `+valider annonce` dans le canal <#557870289292230666>.\n _ _"
             )
             await utils.try_dm(
                 author,
                 f"Copie du contenu de l'annonce:\n _ _ \n"
-                f">>> {recruitment_announce.content}"
+                f">>> {last_recruitment_announce.content}"
             )
 
             # DM moderator
             await utils.try_dm(context.author, f"Rapport d'analyse envoyé à {author.mention}: \n _ _")
-            await utils.try_dms(context.author, Admin.send_buffer, group_in_blocks=True)
+            await utils.try_dms(context.author, self.send_buffer, group_in_blocks=True)
             await utils.try_dm(
                 context.author,
                 f"_ _ \n"
                 f"Copie du contenu de l'annonce:\n _ _ \n"
-                f">>> {recruitment_announce.content}"
+                f">>> {last_recruitment_announce.content}"
             )
 
             # Delete announce
-            await recruitment_announce.delete()
+            await last_recruitment_announce.delete()
             await context.send(f"L'annonce a été supprimée et un rapport envoyé par MP. :ok_hand: ")
 
             # Clear announce tracking records

@@ -21,7 +21,7 @@ from .bot import Bot
 
 class Server(_command.Command):
 
-    """Commands for information about the bot."""
+    """Commands for information about the server."""
 
     DISPLAY_NAME = "Informations sur le serveur"
     DISPLAY_SEQUENCE = 2
@@ -33,7 +33,7 @@ class Server(_command.Command):
     SERVER_STATS_RECORD_FREQUENCY = datetime.timedelta(hours=1)  # How often server stats are recorded
     HOURS_GRANULARITY_LIMIT = 3  # In days, the maximum time-frame (excl.) to display records on a datetime axis
     DAYS_GRANULARITY_LIMIT = 365  # In days, the maximum time-frame (excl.) to display records on a day-to-day date axis
-    MONTHS_GRANULARITY_LIMIT = 365*2  # In days, the maximum time-frame (excl.) to display records on a month axis
+    MONTHS_GRANULARITY_LIMIT = 365 * 2  # In days, the maximum time-frame (excl.) to display records on a month axis
     DISCUSSION_CHANNELS = [
         'général', 'gameplay', 'mentorat', 'actualités', 'promotion', 'recrutement', 'suggestions', 'memes']
     PRIMARY_ROLES = [
@@ -156,7 +156,7 @@ class Server(_command.Command):
                 localized_time = converter.to_community_tz(converter.to_utc(data['time'])).replace(tzinfo=None)
                 times.append(localized_time)
                 counts.append(data['count'])
-        elif granularity in ('day', 'month', 'year'):  # Only plot the date and the average value to align with the tick
+        elif granularity in ('day', 'month', 'year'):  # Only plot the date, and average value to align with the tick
             counts_by_date = {}
             for data in member_counts_data:
                 localized_time = converter.to_community_tz(converter.to_utc(data['time']))
@@ -200,7 +200,7 @@ class Server(_command.Command):
                 localized_time = converter.to_community_tz(converter.to_utc(data['time'])).replace(tzinfo=None)
                 times_by_channel.setdefault(data['channel_id'], []).append(localized_time)
                 counts_by_channel.setdefault(data['channel_id'], []).append(data['count'])
-        elif granularity in ('day', 'month', 'year'):  # Only plot the date and the average value to align with the tick
+        elif granularity in ('day', 'month', 'year'):  # Only plot the date, and average value to align with the tick
             counts_by_channel_and_time = {}
             for data in message_counts_data:
                 localized_time = converter.to_community_tz(converter.to_utc(data['time']))
