@@ -12,6 +12,12 @@ Each changelog must be formatted as follows in order to be correctly matched:
 ```
 where `a.b.c` is the version string.
 
+## 1.6.7 - 2021-08-29 - Sky is the limit for the command `check players`.
+- Allowed the command `check players` to pinpoint invalid player names breaking the check instead of stating that no player of the whole batch has a matching WoT account.
+- Enabled the command `check players` to detect when Wargamming API is unable to access their own database.
+- Fixed the command `check players` crashing if too many long player names were checked at once.
+- Improved performances of the command `check players` (4 times faster).
+
 ## 1.6.6 - 2021-07-04 - Help to prevent depression among our moderators by following the server rules.
 - Added the command `validate` and its subcommand `validate announce` to help clan contacts check that their announce follows the server rules.
 - Made the command `inspect recruitment` exclude members that are no longer clan contacts.

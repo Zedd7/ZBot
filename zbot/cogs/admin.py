@@ -160,31 +160,36 @@ class Admin(_command.Command):
     @staticmethod
     async def check_players_matching_name(context, members, app_id):
         """Check that all players have a name matching with a player in WoT."""
-        lower_case_matching_names = [
-            name.lower() for name in wot_utils.get_players_info(
-                [member.display_name for member in members], app_id
-            ).keys()
-        ]
-
         nonmatching_members = []
-        for member in members:
-            # Parse member name as player name with optional clan tag
-            result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
-            if result:  # Member name fits, check if it has a match
-                player_name = result.group(1)
-                if player_name.lower() not in lower_case_matching_names:
-                    nonmatching_members.append(member)
-            else:  # Member name malformed, reject
-                nonmatching_members.append(member)
-
-        if nonmatching_members:
-            for block in utils.make_message_blocks([
-                f"Le joueur {member.mention} n'a pas de correspondance de pseudo sur WoT."
-                for member in nonmatching_members
-            ]):
-                await context.send(block)
+        try:
+            lower_case_matching_names = [
+                name.lower() for name in wot_utils.get_players_info(
+                    [member.display_name for member in members], app_id
+                ).keys()
+            ]
+        except wot_utils.WargammingAPIError:
+            await context.send(
+                "L'API de Wargamming est incapable de vérifier les correspondances de pseudo pour le moment. 💩"
+            )
         else:
-            await context.send("Tous les joueurs ont une correspondance de pseudo sur WoT. :ok_hand: ")
+            for member in members:
+                # Parse member name as player name with optional clan tag
+                result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+                if result:  # Member name fits, check if it has a match
+                    player_name = result.group(1)
+                    if player_name.lower() not in lower_case_matching_names:
+                        nonmatching_members.append(member)
+                else:  # Member name malformed, reject
+                    nonmatching_members.append(member)
+
+            if nonmatching_members:
+                for block in utils.make_message_blocks([
+                    f"Le joueur {member.mention} n'a pas de correspondance de pseudo sur WoT."
+                    for member in nonmatching_members
+                ]):
+                    await context.send(block)
+            else:
+                await context.send("Tous les joueurs ont une correspondance de pseudo sur WoT. 👌")
         return nonmatching_members
 
     @staticmethod

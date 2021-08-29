@@ -13,9 +13,9 @@ from . import logger
 
 MAX_MESSAGE_LENGTH = 2000
 PLAYER_NAME_PATTERN = re.compile(
-    r'^(\w+)'  # One-word player name
-    r'([ ]\[([\w-]{2,5})\])?'  # Space-separated clan tag between square brackets
-    r'([ ](🕯+))?$'  # Space-separated arbitrary repetition of an emoji
+    r'^(\w{3,24})'            # One-word player name
+    r'([ ]\[([\w-]{2,5})])?'  # Space-separated clan tag between square brackets
+    r'([ ](🕯+))?$'            # Space-separated arbitrary repetition of an emoji
 )
 
 
@@ -264,8 +264,8 @@ def remove_option(options: str, option_name: str) -> str:
     return re.sub(p, '', options).rstrip()
 
 
-def sanitize_player_names(member_names):
-    """Filter out member names that do not follow either the `player` or `player [CLAN]` pattern."""
+def sanitize_player_names(member_names) -> list:
+    """Filter out member names that do not match `PLAYER_NAME_PATTERN`."""
     sanitized_player_names = []
     for member_name in member_names:
         result = PLAYER_NAME_PATTERN.match(member_name)
