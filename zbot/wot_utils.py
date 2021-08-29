@@ -8,33 +8,50 @@ from . import utils
 
 
 def get_players_info(member_names: list, app_id) -> dict:
-    """
-    Retrieve the exact player name and account id of a list of players.
+    """Retrieve the exact player name and account id of a list of players.
+
     Only matching names will have their information included in the returned dict.
     """
+
+    def _fetch_players_data(_player_names):
+        """Recursively fetch players data in batch.
+
+        If a batch contains an invalid (non-ascii, > 25 chars, ...) player name that is making the request fail, the
+        batch is split in two and recursively processed. When the faulty player name is found, it is discarded.
+        """
+        _players_data = []
+        for _name_batch in batch(_player_names, 100):
+            _payload = {
+                'application_id': app_id,
+                'search': ','.join(_name_batch),
+                'fields': ','.join([
+                    'nickname',
+                    'account_id',
+                ]),
+                'type': 'exact',
+            }
+            _response = requests.post('https://api.worldoftanks.eu/wot/account/list/', data=_payload)
+            _response_content = _response.json()
+            if _response_content['status'] == 'ok':
+                _players_data += _response_content['data']
+            elif _response_content['error']['message'] == 'INVALID_SEARCH':  # 'search' param invalid
+                if len(_name_batch) > 1:  # At least one invalid player name in the batch, split it
+                    _split_at = len(_name_batch) // 2
+                    _players_data += _fetch_players_data(_name_batch[:_split_at])
+                    _players_data += _fetch_players_data(_name_batch[_split_at:])
+                else:  # Found the invalid player name of the batch
+                    pass  # Don't return anything to discard it
+        return _players_data
 
     # Remove malformed nicknames
     sanitized_player_names = utils.sanitize_player_names(member_names)
 
     # Gather information for matching names
     players_info = {}
-    for name_batch in batch(sanitized_player_names, 24):
-        payload = {
-            'application_id': app_id,
-            'search': ','.join(name_batch),
-            'fields': ','.join([
-                'nickname',
-                'account_id',
-            ]),
-            'type': 'exact',
-        }
-        response = requests.get('https://api.worldoftanks.eu/wot/account/list/', params=payload)
-        response_content = response.json()
-        if response_content['status'] == 'ok':
-            for player_data in response_content['data']:
-                player_name = player_data['nickname']
-                account_id = str(player_data['account_id'])
-                players_info[player_name] = account_id
+    for player_data in _fetch_players_data(sanitized_player_names):
+        player_name = player_data['nickname']
+        account_id = str(player_data['account_id'])
+        players_info[player_name] = account_id
     return players_info
 
 
@@ -60,7 +77,7 @@ def get_players_details(player_ids: list, app_id) -> dict:
                 'clan_id',
             ]),
         }
-        response = requests.get('https://api.worldoftanks.eu/wot/account/info/', params=payload)
+        response = requests.post('https://api.worldoftanks.eu/wot/account/info/', data=payload)
         response_content = response.json()
 
         if response_content['status'] == 'ok':
@@ -97,7 +114,7 @@ def get_player_stats_totals(player_id, app_id) -> dict or None:
             'statistics.all.wins',
         ]),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/account/info/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/account/info/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -128,7 +145,7 @@ def get_player_tank_stats(player_id, exp_values, app_id) -> (dict, dict, list) o
             'statistics.battles',
         ]),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/account/tanks/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/account/tanks/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -159,7 +176,7 @@ def get_clan_id(clan_search_field, app_id) -> str or None:
         'search': clan_search_field,
         'fields': ','.join(['clan_id']),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/clans/list/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/clans/list/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -186,7 +203,7 @@ def get_clan_infos(clan_id, app_id) -> dict or None:
             'members_count',
         ]),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/clans/info/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/clans/info/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -218,7 +235,7 @@ def get_clan_contact(clan_id, guild_members, role_name, app_id) -> discord.Membe
             'members.account_name',
         ]),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/clans/info/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/clans/info/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -242,7 +259,7 @@ def get_clan_member_infos(player_id, app_id) -> str or None:
             'clan.tag'
         ]),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/clans/accountinfo/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/clans/accountinfo/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
@@ -271,7 +288,7 @@ def deduct_missing_tanks(player_id, stats_totals, missing_tanks, app_id) -> dict
             ]),
             'tank_id': ','.join(missing_tanks),
         }
-        response = requests.get('https://api.worldoftanks.eu/wot/tanks/stats/', params=payload)
+        response = requests.post('https://api.worldoftanks.eu/wot/tanks/stats/', data=payload)
         response_content = response.json()
 
         if response_content['status'] == 'ok':
@@ -328,7 +345,7 @@ def load_tank_tiers(app_id) -> dict or None:
         'application_id': app_id,
         'fields': ','.join(['tier']),
     }
-    response = requests.get('https://api.worldoftanks.eu/wot/encyclopedia/vehicles/', params=payload)
+    response = requests.post('https://api.worldoftanks.eu/wot/encyclopedia/vehicles/', data=payload)
     response_content = response.json()
 
     if response_content['status'] == 'ok':
