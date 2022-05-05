@@ -33,7 +33,6 @@ class Messaging(_command.Command):
     CELEBRATION_CHANNEL_ID = 525037740690112527  # #général
     CELEBRATION_EMOJI = "🕯"
     AUTOMESSAGE_FREQUENCY = datetime.timedelta(hours=4)  # The time to wait after that the last message was posted
-    AUTOMESSAGE_COOLDOWN = datetime.timedelta(days=2)  # The time to wait before sending two messages in a row
     AUTOMESSAGE_WAIT = datetime.timedelta(minutes=5)  # The time to wait for a channel to be quiet
 
     def __init__(self, bot):
@@ -168,12 +167,8 @@ class Messaging(_command.Command):
 
         # Run halt checks on target channel
         if last_channel_message.author == self.user:  # Avoid spamming an channel
-            # Check if the cooldown between two bot messages has expired
-            last_channel_message_date_localized = converter.to_utc(last_channel_message.created_at)
-            cooldown_expired = last_channel_message_date_localized < now - self.AUTOMESSAGE_COOLDOWN
-            if not cooldown_expired:
-                logger.debug(f"Skipped automessage of id {automessage_id} as cooldown has not expired yet.")
-                return
+            logger.debug(f"Skipped automessage of id {automessage_id} because it is already the last message.")
+            return
         else:  # Avoid interrupting conversations
             is_channel_quiet, attempt_count = False, 0
             while not is_channel_quiet:  # Wait for the channel to be quiet to send the message
