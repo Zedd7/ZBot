@@ -59,7 +59,7 @@ def from_timestamp(timestamp: int) -> datetime.datetime:
 
 def to_bot_tz(time: datetime.datetime) -> datetime.datetime:
     if not time.tzinfo:
-        return tzlocal.get_localzone().localize(time)
+        return time.replace(tzinfo=tzlocal.get_localzone())
     else:
         return time.astimezone(tzlocal.get_localzone())
 
