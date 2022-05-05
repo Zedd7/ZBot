@@ -12,6 +12,9 @@ Each changelog must be formatted as follows in order to be correctly matched:
 ```
 where `a.b.c` is the version string.
 
+## 1.6.8 - 2022-05-05 - The bot now reminds itself about its own reminders.
+- Prevented automessages from being posted in a channel where the last message is already an automessage.
+
 ## 1.6.7 - 2021-08-29 - Sky is the limit for the command `check players`.
 - Allowed the command `check players` to pinpoint invalid player names breaking the check instead of stating that no player of the whole batch has a matching WoT account.
 - Enabled the command `check players` to detect when Wargamming API is unable to access their own database.
