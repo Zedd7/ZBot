@@ -4,14 +4,13 @@ import typing
 import discord
 from discord.ext import commands
 
-from zbot import checker
-from zbot import converter
-from zbot import error_handler
-from zbot import exceptions
-from zbot import logger
-from zbot import scheduler
-from zbot import utils
-from zbot import zbot
+from .. import checker
+from .. import converter
+from .. import error_handler
+from .. import exceptions
+from .. import logger
+from .. import scheduler
+from .. import utils
 from . import _command
 from .bot import Bot
 
@@ -33,7 +32,7 @@ class Poll(_command.Command):
     def __init__(self, bot):
         super().__init__(bot)
         # Use class attribute to be available from static methods
-        Poll.pending_polls = zbot.db.load_pending_polls_data(
+        Poll.pending_polls = self.db.load_pending_polls_data(
             (
                 '_id', 'poll_id', 'message_id', 'channel_id', 'emoji_codes', 'next_run_time', 'organizer_id',
                 'is_exclusive', 'required_role_name'
@@ -74,13 +73,13 @@ class Poll(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def start(
-            self, context: commands.Context,
-            announce: str,
-            description: str,
-            dest_channel: discord.TextChannel,
-            emoji_list: converter.to_emoji_list,
-            time: converter.to_future_datetime,
-            *, options=""
+        self, context: commands.Context,
+        announce: str,
+        description: str,
+        dest_channel: discord.TextChannel,
+        emoji_list: converter.EmojisListConverter,
+        time: converter.to_future_datetime,
+        *, options="",
     ):
         # Check arguments
         if not context.author.permissions_in(dest_channel).send_messages:
@@ -114,7 +113,7 @@ class Poll(_command.Command):
             await message.pin()
 
         # Register data
-        job_id = scheduler.schedule_stored_job(zbot.db.PENDING_POLLS_COLLECTION, time, self.close_poll, message.id).id
+        job_id = scheduler.schedule_stored_job(self.db.PENDING_POLLS_COLLECTION, time, self.close_poll, message.id).id
         poll_data = {
             'poll_id': self.get_next_poll_id(),
             'message_id': message.id,
@@ -124,7 +123,7 @@ class Poll(_command.Command):
             'is_exclusive': is_exclusive,
             'required_role_name': required_role_name,
         }
-        zbot.db.update_poll_data(job_id, poll_data)
+        self.db.update_poll_data(job_id, poll_data)
         # Add data managed by scheduler later to avoid updating the database with them
         poll_data.update({'_id': job_id, 'next_run_time': converter.to_timestamp(time)})
         self.pending_polls[message.id] = poll_data
@@ -160,7 +159,7 @@ class Poll(_command.Command):
         )
         embed.set_author(
             name=f"Organisateur : @{organizer.display_name}",
-            icon_url=organizer.avatar_url
+            icon_url=organizer.avatar
         )
         return embed
 
@@ -201,7 +200,7 @@ class Poll(_command.Command):
                         (r.emoji if isinstance(r.emoji, str) else r.emoji.id) in poll_emoji_codes,
                         message.reactions
                     )):
-                        existing_reaction_users = await existing_reaction.users().flatten()
+                        existing_reaction_users = [user async for user in existing_reaction.users()]
                         if discord.utils.get(existing_reaction_users, id=user.id):
                             try:
                                 await utils.try_dm(
@@ -265,26 +264,25 @@ class Poll(_command.Command):
         await Poll.close_poll(message.id, manual_run=True)
         await context.send(f"Sondage d'identifiant `{poll_id}` clôturé : <{message.jump_url}>")
 
-    @staticmethod
-    async def close_poll(message_id, manual_run=False):
+    async def close_poll(self, message_id, manual_run=False):
         poll_id = Poll.pending_polls[message_id]['poll_id']
         message, channel, emoji_list, is_exclusive, required_role_name, time, organizer = \
-            await Poll.get_message_env(poll_id)
+            await self.get_message_env(poll_id)
         try:
             reactions, results = await Poll.count_votes(
                 message, emoji_list, is_exclusive, required_role_name)
             for reaction in reactions:
-                await reaction.remove(zbot.bot.user)
+                await reaction.remove(self.user)
             await message.unpin()
             await Poll.announce_results(
                 results, message, channel, is_exclusive, required_role_name, organizer
             )
-            Poll.remove_pending_poll(message_id, cancel_job=manual_run)
+            self.remove_pending_poll(message_id, cancel_job=manual_run)
         except commands.CommandError as error:
             context = commands.Context(
-                bot=zbot.bot,
+                bot=self.bot,
                 cog=Poll,
-                prefix=zbot.bot.command_prefix,
+                prefix=self.bot.command_prefix,
                 channel=channel,
                 message=message,
             )
@@ -310,13 +308,13 @@ class Poll(_command.Command):
                 reaction = utils.try_get(
                     message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji
                 )
-                await reaction.remove(zbot.bot.user)
+                await reaction.remove(self.user)
             embed = discord.Embed(
                 title=f"Sondage __annulé__ par {context.author.display_name}",
                 description=message.embeds[0].description if message.embeds[0].description else "",
                 color=Poll.EMBED_COLOR
             )
-            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar)
             await message.edit(embed=embed)
             await message.unpin()
         self.remove_pending_poll(message.id, cancel_job=True)
@@ -425,10 +423,10 @@ class Poll(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def emojis(
-            self, context: commands.Context,
-            poll_id: int,
-            emoji_list: converter.to_emoji_list,
-            *, options=""
+        self, context: commands.Context,
+        poll_id: int,
+        emoji_list: converter.EmojisListConverter,
+        *, options="",
     ):
         message, channel, previous_emoji_list, is_exclusive, required_role_name, time, organizer = \
             await self.get_message_env(poll_id, raise_if_not_found=True)
@@ -458,7 +456,7 @@ class Poll(_command.Command):
             for previous_emoji in previous_emoji_list
         ]
         for previous_reaction in previous_reactions:
-            await previous_reaction.remove(zbot.bot.user)
+            await previous_reaction.remove(self.user)
         for emoji in emoji_list:
             await message.add_reaction(emoji)
         embed = self.build_announce_embed(
@@ -473,7 +471,7 @@ class Poll(_command.Command):
             'is_exclusive': is_exclusive,
             'required_role_name': required_role_name
         }
-        zbot.db.update_poll_data(job_id, poll_data)
+        self.db.update_poll_data(job_id, poll_data)
         self.pending_polls[message.id].update(poll_data)
         await context.send(
             f"Émojis du sondage d'identifiant `{poll_id}` mis à jour : <{message.jump_url}>"
@@ -510,7 +508,7 @@ class Poll(_command.Command):
 
         job_id = self.pending_polls[message.id]['_id']
         poll_data = {'organizer_id': organizer.id}
-        zbot.db.update_poll_data(job_id, poll_data)
+        self.db.update_poll_data(job_id, poll_data)
         self.pending_polls[message.id].update(poll_data)
         await context.send(
             f"Organisateur du sondage d'identifiant `{poll_id}` remplacé par "
@@ -556,23 +554,22 @@ class Poll(_command.Command):
             f"`{converter.to_human_format(time)}` : <{message.jump_url}>"
         )
 
-    @staticmethod
-    async def get_message_env(poll_id: int, raise_if_not_found=True) -> \
+    async def get_message_env(self, poll_id: int, raise_if_not_found=True) -> \
             (discord.Message, discord.TextChannel, typing.List[typing.Union[str, discord.Emoji]],
              bool, bool, datetime.datetime, discord.Member):
         if not (poll_data := discord.utils.find(
-                lambda data: data['poll_id'] == poll_id,
-                Poll.pending_polls.values()
+            lambda data: data['poll_id'] == poll_id,
+            Poll.pending_polls.values()
         )):
             raise exceptions.UnknownPoll(poll_id)
-        channel = zbot.bot.get_channel(poll_data['channel_id'])
+        channel = self.bot.get_channel(poll_data['channel_id'])
         message = await utils.try_get_message(
             channel, poll_data['message_id'],
             error=exceptions.MissingMessage(poll_data['message_id']) if raise_if_not_found else None
         )
         emoji_list = []
         for emoji_code in poll_data['emoji_codes']:
-            emoji = utils.try_get_emoji(zbot.bot.emojis, emoji_code, error=None)
+            emoji = utils.try_get_emoji(self.bot.emojis, emoji_code, error=None)
             if emoji:
                 emoji_list.append(emoji)
             else:
@@ -580,17 +577,16 @@ class Poll(_command.Command):
         is_exclusive = poll_data['is_exclusive']
         required_role_name = poll_data['required_role_name']
         time = converter.from_timestamp(poll_data['next_run_time'])
-        organizer = zbot.bot.get_user(poll_data['organizer_id'])
+        organizer = self.bot.get_user(poll_data['organizer_id'])
         return message, channel, emoji_list, is_exclusive, required_role_name, time, organizer
 
-    @staticmethod
-    def remove_pending_poll(message_id, cancel_job=False):
+    def remove_pending_poll(self, message_id, cancel_job=False):
         if message_id not in Poll.pending_polls:
             return  # Callback of misfired poll or manual run
         for poll_data in Poll.pending_polls.values():
             if poll_data['poll_id'] > Poll.pending_polls[message_id]['poll_id']:
                 poll_data['poll_id'] -= 1
-                zbot.db.update_poll_data(poll_data['_id'], {'poll_id': poll_data['poll_id']})
+                self.db.update_poll_data(poll_data['_id'], {'poll_id': poll_data['poll_id']})
         if cancel_job:
             scheduler.cancel_stored_job(Poll.pending_polls[message_id]['_id'])
         del Poll.pending_polls[message_id]
@@ -615,7 +611,7 @@ class Poll(_command.Command):
             self, context: commands.Context,
             src_channel: discord.TextChannel,
             message_id: int,
-            emoji_list: converter.to_emoji_list = (),
+            emoji_list: converter.EmojisListConverter = (),
             dest_channel: discord.TextChannel = None,
             *, options=""
     ):
@@ -660,7 +656,9 @@ class Poll(_command.Command):
             utils.try_get(message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji)
             for emoji in emoji_list
         ]
-        votes = {reaction.emoji: await reaction.users().flatten() for reaction in reactions}
+        votes = {}
+        for reaction in reactions:
+            votes[reaction.emoji] = [user async for user in reaction.users()]
         results = {}
         for emoji, voters in votes.items():
             valid_votes_count = 0
@@ -702,7 +700,7 @@ class Poll(_command.Command):
             )
         if organizer:
             announcement_embed.set_author(
-                name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+                name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar)
         if dest_message:  # Poll simulation
             await dest_message.edit(embed=announcement_embed)
         else:  # Assessment of a poll
@@ -726,11 +724,11 @@ class Poll(_command.Command):
             )
             if organizer:
                 embed.set_author(
-                    name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+                    name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar)
             await src_message.edit(embed=embed)
 
         logger.debug(f"Poll results: {results}")
 
 
-def setup(bot):
-    bot.add_cog(Poll(bot))
+async def setup(bot):
+    await bot.add_cog(Poll(bot))

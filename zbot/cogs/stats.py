@@ -5,15 +5,18 @@ import typing
 from time import perf_counter
 
 import discord
-import dotenv
 from discord.ext import commands
+from dotenv import load_dotenv
 
-from zbot import checker
-from zbot import converter
-from zbot import exceptions
-from zbot import utils
-from zbot import wot_utils
+from .. import checker
+from .. import converter
+from .. import exceptions
+from .. import utils
+from .. import wot_utils
 from . import _command
+
+
+load_dotenv()
 
 
 class Stats(_command.Command):
@@ -43,9 +46,11 @@ class Stats(_command.Command):
 
     def __init__(self, bot):
         super().__init__(bot)
-        dotenv.load_dotenv()
         self.exp_values, self.tank_tiers = None, None
-        bot.loop.create_task(self.load_required_data())
+
+    async def cog_load(self):
+        dotenv.load_dotenv()
+        self.bot.loop.create_task(self.load_required_data())
 
     async def load_required_data(self):
         self.exp_values = wot_utils.load_exp_values(
@@ -111,7 +116,7 @@ class Stats(_command.Command):
         embed.set_author(
             name=player_details['name'],
             url=f"https://fr.wot-life.com/eu/player/{player_details['name']}/",
-            icon_url=player.avatar_url if isinstance(player, discord.Member) else ''
+            icon_url=player.avatar if isinstance(player, discord.Member) else ''
         )
         embed.add_field(name="Batailles", value=f"{player_details['battles']: .0f}")
         embed.add_field(name="Tier moyen", value=f"{player_details['average_tier']: .2f}")
@@ -171,7 +176,7 @@ class Stats(_command.Command):
         embed.set_author(
             name=player_details['name'] + (f" [{player_details['clan_tag']}]" if player_details['clan'] else ""),
             url=f"https://worldoftanks.eu/fr/community/accounts/{player_details['id']}/",
-            icon_url=player.avatar_url if isinstance(player, discord.Member) else '')
+            icon_url=player.avatar if isinstance(player, discord.Member) else '')
         embed.add_field(name="Identifiant", value=player_details['id'])
         embed.add_field(
             name="Création du compte",
@@ -268,5 +273,5 @@ class Stats(_command.Command):
         await context.send(embed=embed)
 
 
-def setup(bot):
-    bot.add_cog(Stats(bot))
+async def setup(bot):
+    await bot.add_cog(Stats(bot))

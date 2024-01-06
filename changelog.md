@@ -1,6 +1,6 @@
 # Changelog
 
-The changelog are a the summary of changes brought to ZBot by each version released. They don't include technical
+The changelog are the summary of changes brought to ZBot by each version released. They don't include technical
 changes that are already described in commit messages, but rather focus on functional improvements and bug fixes.
 
 Each changelog must be formatted as follows in order to be correctly matched:

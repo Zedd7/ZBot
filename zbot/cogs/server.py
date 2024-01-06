@@ -9,12 +9,11 @@ import matplotlib.ticker as ticker
 from discord.ext import commands
 from discord.ext import tasks
 
-from zbot import checker
-from zbot import converter
-from zbot import exceptions
-from zbot import logger
-from zbot import utils
-from zbot import zbot
+from .. import checker
+from .. import converter
+from .. import exceptions
+from .. import logger
+from .. import utils
 from . import _command
 from .bot import Bot
 
@@ -47,7 +46,7 @@ class Server(_command.Command):
     @tasks.loop(seconds=SERVER_STATS_RECORD_FREQUENCY.seconds)
     async def record_server_stats(self):
         now = utils.bot_tz_now()
-        last_server_stats_record_date = zbot.db.get_metadata('last_server_stats_record')
+        last_server_stats_record_date = self.db.get_metadata('last_server_stats_record')
         if last_server_stats_record_date:
             last_server_stats_record_date_localized = converter.to_utc(last_server_stats_record_date)
             if not utils.is_time_almost_elapsed(
@@ -61,21 +60,21 @@ class Server(_command.Command):
 
         await self.record_member_count(now)
         await self.record_message_count(now)
-        zbot.db.update_metadata('last_server_stats_record', now)
+        self.db.update_metadata('last_server_stats_record', now)
 
     async def record_member_count(self, time):
-        zbot.db.insert_timed_member_count(time, self.guild.member_count)
+        self.db.insert_timed_member_count(time, self.guild.member_count)
 
     async def record_message_count(self, time):
         message_counts = []
         for channel_name in self.DISCUSSION_CHANNELS:
             channel = utils.try_get(self.guild.channels, name=channel_name)
-            channel_message_count = len(await channel.history(
+            channel_message_count = len([message async for message in channel.history(
                 after=converter.to_utc(time - datetime.timedelta(hours=1)).replace(tzinfo=None),
                 limit=999
-            ).flatten())
+            )])
             message_counts.append({'count': channel_message_count, 'channel_id': channel.id})
-        zbot.db.insert_timed_message_counts(time, message_counts)
+        self.db.insert_timed_message_counts(time, message_counts)
 
     @commands.command(
         name='members',
@@ -147,7 +146,7 @@ class Server(_command.Command):
         # Load, compute and reshape data
         today = utils.community_tz_now()
         time_limit = today - datetime.timedelta(days=days_number)
-        member_counts_data = zbot.db.load_member_counts(
+        member_counts_data = self.db.load_member_counts(
             {'time': {'$gt': converter.to_utc(time_limit)}}, ['time', 'count']
         )
         times, counts = [], []
@@ -191,7 +190,7 @@ class Server(_command.Command):
         # Load, compute and reshape data
         today = utils.community_tz_now()
         time_limit = today - datetime.timedelta(days=days_number)
-        message_counts_data = zbot.db.load_message_counts(
+        message_counts_data = self.db.load_message_counts(
             {'time': {'$gt': converter.to_utc(time_limit)}}, ['time', 'count', 'channel_id']
         )
         times_by_channel, counts_by_channel = {}, {}
@@ -319,5 +318,5 @@ class Server(_command.Command):
         return discord.File(buffer, 'graph.png')
 
 
-def setup(bot):
-    bot.add_cog(Server(bot))
+async def setup(bot):
+    await bot.add_cog(Server(bot))

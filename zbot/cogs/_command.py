@@ -22,6 +22,7 @@ class Command(commands.Cog):
         self.bot = bot
         self.user = self.bot.user
         self.guild = self.bot.get_guild(GUILD_ID)
+        self.db = self.bot.db
         self.app_id = os.getenv('WG_API_APPLICATION_ID') or 'demo'
 
     @staticmethod

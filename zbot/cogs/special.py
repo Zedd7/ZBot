@@ -3,10 +3,9 @@ from copy import copy
 
 from discord.ext import commands
 
-from zbot import checker
-from zbot import converter
-from zbot import exceptions
-from zbot import zbot
+from .. import checker
+from .. import converter
+from .. import exceptions
 from . import _command
 from .admin import Admin
 from .bot import Bot
@@ -57,7 +56,7 @@ class Special(_command.Command):
             raise exceptions.MissingRoles([Stats.CLAN_CONTACT_ROLE_NAME])
 
         recruitment_channel = self.guild.get_channel(Admin.RECRUITMENT_CHANNEL_ID)
-        all_recruitment_announces = await recruitment_channel.history().flatten()
+        all_recruitment_announces = [message async for message in recruitment_channel.history()]
         recruitment_announces = list(filter(lambda a: a.author == context.author, all_recruitment_announces))
         last_recruitment_announce = recruitment_announces and recruitment_announces[0]
 
@@ -98,7 +97,7 @@ class Special(_command.Command):
             if validation_succeeded:
                 await context.send(f"L'annonce ne présente aucun problème. :ok_hand: ")
 
-            last_announce_time_localized = converter.to_utc(zbot.db.load_recruitment_announces_data(
+            last_announce_time_localized = converter.to_utc(self.db.load_recruitment_announces_data(
                 query={'author': context.author.id}, order=[('time', -1)]
             )[0]['time'])
             min_timespan = datetime.timedelta(
@@ -113,5 +112,5 @@ class Special(_command.Command):
             )
 
 
-def setup(bot):
-    bot.add_cog(Special(bot))
+async def setup(bot):
+    await bot.add_cog(Special(bot))

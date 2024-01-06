@@ -5,16 +5,15 @@ import typing
 import discord
 from discord.ext import commands
 
-from zbot import checker
-from zbot import converter
-from zbot import error_handler
-from zbot import exceptions
-from zbot import logger
-from zbot import scheduler
-from zbot import utils
-from zbot import zbot
 from . import _command
 from .bot import Bot
+from .. import checker
+from .. import converter
+from .. import error_handler
+from .. import exceptions
+from .. import logger
+from .. import scheduler
+from .. import utils
 
 
 class Lottery(_command.Command):
@@ -34,7 +33,7 @@ class Lottery(_command.Command):
     def __init__(self, bot):
         super().__init__(bot)
         # Use class attribute to be available from static methods
-        Lottery.pending_lotteries = zbot.db.load_pending_lotteries_data(
+        Lottery.pending_lotteries = self.db.load_pending_lotteries_data(
             (
                 '_id', 'lottery_id', 'message_id', 'channel_id', 'emoji_code', 'nb_winners', 'next_run_time',
                 'organizer_id'
@@ -73,7 +72,7 @@ class Lottery(_command.Command):
         self, context: commands.Context,
         announce: str,
         dest_channel: discord.TextChannel,
-        emoji: converter.to_emoji,
+        emoji: converter.EmojiConverter,
         nb_winners: converter.to_positive_int,
         time: converter.to_future_datetime,
         *, options=""
@@ -94,7 +93,7 @@ class Lottery(_command.Command):
 
         # Register data
         job_id = scheduler.schedule_stored_job(
-            zbot.db.PENDING_LOTTERIES_COLLECTION, time, self.run_lottery, message.id
+            self.db.PENDING_LOTTERIES_COLLECTION, time, self.run_lottery, message.id
         ).id
         lottery_data = {
             'lottery_id': self.get_next_lottery_id(),
@@ -104,7 +103,7 @@ class Lottery(_command.Command):
             'nb_winners': nb_winners,
             'organizer_id': organizer.id,
         }
-        zbot.db.update_lottery_data(job_id, lottery_data)
+        self.db.update_lottery_data(job_id, lottery_data)
         # Add data managed by scheduler later to avoid updating the database with them
         lottery_data.update({'_id': job_id, 'next_run_time': converter.to_timestamp(time)})
         self.pending_lotteries[message.id] = lottery_data
@@ -138,7 +137,7 @@ class Lottery(_command.Command):
         )
         embed.set_author(
             name=f"Organisateur : @{organizer.display_name}",
-            icon_url=organizer.avatar_url
+            icon_url=organizer.avatar
         )
         return embed
 
@@ -216,11 +215,10 @@ class Lottery(_command.Command):
         if context.author != organizer:
             checker.has_any_mod_role(context, print_error=True)
 
-        await Lottery.run_lottery(message.id, seed=seed, manual_run=True)
+        await self.run_lottery(message.id, seed=seed, manual_run=True)
         await context.send(f"Tirage au sort d'identifiant `{lottery_id}` exécuté : <{message.jump_url}>")
 
-    @staticmethod
-    async def run_lottery(message_id, seed=None, manual_run=False):
+    async def run_lottery(self, message_id, seed=None, manual_run=False):
         lottery_id = Lottery.pending_lotteries[message_id]['lottery_id']
         message, channel, emoji, nb_winners, _, organizer = await Lottery.get_message_env(
             lottery_id
@@ -229,14 +227,14 @@ class Lottery(_command.Command):
             players, reaction, winners = await Lottery.draw(
                 message, emoji, nb_winners, seed
             )
-            await reaction.remove(zbot.bot.user)
+            await reaction.remove(self.user)
             await Lottery.announce_winners(winners, players, message, organizer)
-            Lottery.remove_pending_lottery(message_id, cancel_job=manual_run)
+            self.remove_pending_lottery(message_id, cancel_job=manual_run)
         except commands.CommandError as error:
             context = commands.Context(
-                bot=zbot.bot,
+                bot=self.bot,
                 cog=Lottery,
-                prefix=zbot.bot.command_prefix,
+                prefix=self.bot.command_prefix,
                 channel=channel,
                 message=message,
             )
@@ -261,12 +259,12 @@ class Lottery(_command.Command):
 
         if message:
             reaction = utils.try_get(message.reactions, error=exceptions.MissingEmoji(emoji), emoji=emoji)
-            await reaction.remove(zbot.bot.user)
+            await reaction.remove(self.user)
             embed = discord.Embed(
                 title=f"Tirage au sort __annulé__ par {context.author.display_name}",
                 color=Lottery.EMBED_COLOR
             )
-            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+            embed.set_author(name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar)
             await message.edit(embed=embed)
         self.remove_pending_lottery(message.id, cancel_job=True)
         await context.send(f"Tirage au sort d'identifiant `{lottery_id}` annulé : <{message.jump_url}>")
@@ -333,7 +331,12 @@ class Lottery(_command.Command):
     )
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def emoji(self, context: commands.Context, lottery_id: int, emoji: converter.to_emoji):
+    async def emoji(
+        self,
+        context: commands.Context,
+        lottery_id: int,
+        emoji: typing.Union[discord.Emoji, str] = commands.parameter(converter=converter.EmojiConverter),
+    ):
         message, channel, previous_emoji, nb_winners, time, organizer = \
             await self.get_message_env(lottery_id, raise_if_not_found=True)
 
@@ -343,14 +346,14 @@ class Lottery(_command.Command):
         previous_reaction = utils.try_get(
             message.reactions, error=exceptions.MissingEmoji(previous_emoji), emoji=previous_emoji
         )
-        await previous_reaction.remove(zbot.bot.user)
+        await previous_reaction.remove(self.user)
         await message.add_reaction(emoji)
         embed = self.build_announce_embed(emoji, nb_winners, organizer, time, self.guild.roles)
         await message.edit(embed=embed)
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'emoji_code': emoji if isinstance(emoji, str) else emoji.id}
-        zbot.db.update_lottery_data(job_id, lottery_data)
+        self.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Émoji du tirage au sort d'identifiant `{lottery_id}` remplacé par \"{emoji}\" : "
@@ -383,7 +386,7 @@ class Lottery(_command.Command):
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'organizer_id': organizer.id}
-        zbot.db.update_lottery_data(job_id, lottery_data)
+        self.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Organisateur du tirage au sort d'identifiant `{lottery_id}` remplacé par "
@@ -451,15 +454,14 @@ class Lottery(_command.Command):
 
         job_id = self.pending_lotteries[message.id]['_id']
         lottery_data = {'nb_winners': nb_winners}
-        zbot.db.update_lottery_data(job_id, lottery_data)
+        self.db.update_lottery_data(job_id, lottery_data)
         self.pending_lotteries[message.id].update(lottery_data)
         await context.send(
             f"Nombre de gagnants du tirage au sort d'identifiant `{lottery_id}` changé à "
             f"`{nb_winners}` : <{message.jump_url}>"
         )
 
-    @staticmethod
-    async def get_message_env(lottery_id: int, raise_if_not_found=True) -> (
+    async def get_message_env(self, lottery_id: int, raise_if_not_found=True) -> (
         discord.Message, discord.TextChannel, typing.Union[str, discord.Emoji], datetime.datetime, str, discord.Member
     ):
         if not (lottery_data := discord.utils.find(
@@ -468,27 +470,26 @@ class Lottery(_command.Command):
         )):
             raise exceptions.UnknownLottery(lottery_id)
 
-        channel = zbot.bot.get_channel(lottery_data['channel_id'])
+        channel = self.bot.get_channel(lottery_data['channel_id'])
         message = await utils.try_get_message(
             channel, lottery_data['message_id'],
             error=exceptions.MissingMessage(lottery_data['message_id'])
             if raise_if_not_found else None
         )
-        emoji = utils.try_get_emoji(zbot.bot.emojis, lottery_data['emoji_code'], error=None)  # TODO cancel lottery if not found
+        emoji = utils.try_get_emoji(self.bot.emojis, lottery_data['emoji_code'], error=None)  # TODO cancel lottery if not found
         nb_winners = lottery_data['nb_winners']
         time = converter.from_timestamp(lottery_data['next_run_time'])
-        organizer = zbot.bot.get_user(lottery_data['organizer_id'])
+        organizer = self.bot.get_user(lottery_data['organizer_id'])
 
         return message, channel, emoji, nb_winners, time, organizer
 
-    @staticmethod
-    def remove_pending_lottery(message_id, cancel_job=False):
+    def remove_pending_lottery(self, message_id, cancel_job=False):
         if message_id not in Lottery.pending_lotteries:
             return  # Callback of misfired lottery or manual run
         for lottery_data in Lottery.pending_lotteries.values():
             if lottery_data['lottery_id'] > Lottery.pending_lotteries[message_id]['lottery_id']:
                 lottery_data['lottery_id'] -= 1
-                zbot.db.update_lottery_data(lottery_data['_id'], {'lottery_id': lottery_data['lottery_id']})
+                self.db.update_lottery_data(lottery_data['_id'], {'lottery_id': lottery_data['lottery_id']})
         if cancel_job:
             scheduler.cancel_stored_job(Lottery.pending_lotteries[message_id]['_id'])
         del Lottery.pending_lotteries[message_id]
@@ -515,7 +516,7 @@ class Lottery(_command.Command):
         self, context: commands.Context,
         src_channel: discord.TextChannel,
         message_id: int,
-        emoji: converter.to_emoji = None,
+        emoji: converter.EmojiConverter = None,
         nb_winners: converter.to_positive_int = 1,
         dest_channel: discord.TextChannel = None,
         organizer: discord.User = None,
@@ -560,10 +561,9 @@ class Lottery(_command.Command):
     @staticmethod
     async def pick_winners(guild, reaction, nb_winners, ignore_roles=False):
         players = list(filter(
-            lambda m: checker.has_any_role(guild, m, Lottery.USER_ROLE_NAMES)
-            or ignore_roles and not m.bot,
-            await reaction.users().flatten())
-        )
+            lambda m: checker.has_any_role(guild, m, Lottery.USER_ROLE_NAMES) or ignore_roles and not m.bot,
+            [user async for user in reaction.users()],
+        ))
         nb_winners = min(nb_winners, len(players))
         winners = random.sample(players, nb_winners)
         return players, winners
@@ -580,7 +580,7 @@ class Lottery(_command.Command):
         )
         if organizer:
             embed.set_author(
-                name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar_url)
+                name=f"Organisateur : @{organizer.display_name}", icon_url=organizer.avatar)
         await message.edit(embed=embed)
 
         if organizer:
@@ -609,5 +609,5 @@ class Lottery(_command.Command):
             logger.debug(f"Winners: {winner_list}")
 
 
-def setup(bot):
-    bot.add_cog(Lottery(bot))
+async def setup(bot):
+    await bot.add_cog(Lottery(bot))

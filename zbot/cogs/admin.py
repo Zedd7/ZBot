@@ -6,12 +6,11 @@ import discord
 import typing
 from discord.ext import commands
 
-from zbot import checker
-from zbot import converter
-from zbot import exceptions
-from zbot import utils
-from zbot import wot_utils
-from zbot import zbot
+from .. import checker
+from .. import converter
+from .. import exceptions
+from .. import utils
+from .. import wot_utils
 from . import _command
 from .bot import Bot
 from .stats import Stats
@@ -32,22 +31,22 @@ class Admin(_command.Command):
     MIN_RECRUITMENT_LINE_LENGTH = 100  # In characters
     MIN_RECRUITMENT_ANNOUNCE_TIMESPAN = 30  # In days
     RECRUITMENT_ANNOUNCE_TIMESPAN_TOLERANCE = 2  # In days
-    WORK_IN_PROGRESS_EMOJI = '👀'
-    WORK_DONE_EMOJI = '✅'
 
     def __init__(self, bot):
         super().__init__(bot)
-        bot.loop.create_task(self.record_recruitment_announces())
+
+    async def cog_load(self):
+        self.bot.loop.create_task(self.record_recruitment_announces())
 
     async def record_recruitment_announces(self):
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
-        recruitment_announces = await recruitment_channel.history().flatten()
-        zbot.db.update_recruitment_announces(recruitment_announces)
+        recruitment_announces = [message async for message in recruitment_channel.history()]
+        self.db.update_recruitment_announces(recruitment_announces)
 
     @commands.group(
         name='check',
         brief="Gère les checklists de modération",
-        hidden=True,
+        hidden=True,  # TODO https://discordpy.readthedocs.io/en/latest/ext/commands/api.html#discord.ext.commands.CogMeta.command_attrs
         invoke_without_command=True
     )
     @commands.check(checker.has_any_mod_role)
@@ -68,15 +67,10 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def check_all(self, context):
-        await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
-
-        await self.check_everyone(context, add_reaction=False)
-        await self.check_players(context, add_reaction=False)
-        await self.check_contacts(context, add_reaction=False)
-        await self.check_recruitments(context, add_reaction=False)
-
-        await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        await context.message.add_reaction(self.WORK_DONE_EMOJI)
+        await self.check_everyone(context)
+        await self.check_players(context)
+        await self.check_contacts(context)
+        await self.check_recruitments(context)
 
     @check.command(
         name='everyone',
@@ -90,14 +84,10 @@ class Admin(_command.Command):
     )
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def check_everyone(self, context, add_reaction=True):
-        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
-
-        await self.check_everyone_role(context, self.guild.members)
-        await self.check_everyone_clan_tag(context, self.guild.members)
-
-        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
+    async def check_everyone(self, context):
+        async with context.typing():
+            await self.check_everyone_role(context, self.guild.members)
+            await self.check_everyone_clan_tag(context, self.guild.members)
 
     @staticmethod
     async def check_everyone_role(context, members):
@@ -143,19 +133,15 @@ class Admin(_command.Command):
     )
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def check_players(self, context, add_reaction=True):
-        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+    async def check_players(self, context):
+        async with context.typing():
+            members = []
+            for member in self.guild.members:
+                if checker.has_role(member, self.PLAYER_ROLE_NAME):
+                    members.append(member)
 
-        members = []
-        for member in self.guild.members:
-            if checker.has_role(member, self.PLAYER_ROLE_NAME):
-                members.append(member)
-
-        await self.check_players_matching_name(context, members, self.app_id)
-        await self.check_players_unique_name(context, members)
-
-        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
+            await self.check_players_matching_name(context, members, self.app_id)
+            await self.check_players_unique_name(context, members)
 
     @staticmethod
     async def check_players_matching_name(context, members, app_id):
@@ -226,25 +212,21 @@ class Admin(_command.Command):
     )
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
-    async def check_contacts(self, context, add_reaction=True):
-        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+    async def check_contacts(self, context):
+        async with context.typing():
+            contacts, contacts_by_clan = [], {}
+            for member in self.guild.members:
+                if checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
+                    contacts.append(member)
+                    result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
+                    if result:  # Malformed member names handled by check_players_matching_name
+                        clan_tag = result.group(3)
+                        if clan_tag:  # Missing clan tag handled by check_contacts_clan_tag
+                            contacts_by_clan.setdefault(clan_tag, []).append(member)
 
-        contacts, contacts_by_clan = [], {}
-        for member in self.guild.members:
-            if checker.has_role(member, Stats.CLAN_CONTACT_ROLE_NAME):
-                contacts.append(member)
-                result = utils.PLAYER_NAME_PATTERN.match(member.display_name)
-                if result:  # Malformed member names handled by check_players_matching_name
-                    clan_tag = result.group(3)
-                    if clan_tag:  # Missing clan tag handled by check_contacts_clan_tag
-                        contacts_by_clan.setdefault(clan_tag, []).append(member)
-
-        await self.check_contacts_clan_tag(context, contacts)
-        await self.check_clans_single_contact(context, contacts_by_clan)
-        await self.check_contacts_recruiting_permissions(context, contacts_by_clan, self.app_id)
-
-        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
+            await self.check_contacts_clan_tag(context, contacts)
+            await self.check_clans_single_contact(context, contacts_by_clan)
+            await self.check_contacts_recruiting_permissions(context, contacts_by_clan, self.app_id)
 
     @staticmethod
     async def check_contacts_clan_tag(context, contacts):
@@ -341,32 +323,29 @@ class Admin(_command.Command):
         self, context,
         after: converter.to_past_datetime = converter.to_datetime('1970-01-01'),
         limit: converter.to_positive_int = 100,
-        add_reaction=True
     ):
-        add_reaction and await context.message.add_reaction(self.WORK_IN_PROGRESS_EMOJI)
+        async with context.typing():
+            recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
+            recruitment_announces = [message async for message in recruitment_channel.history(
+                after=after.replace(tzinfo=None),
+                limit=limit,
+                oldest_first=False  # Search in reverse in case the filters limit the results
+            )]
+            recruitment_announces.reverse()  # Reverse again to have oldest match in first place
+            recruitment_announces = list(filter(
+                lambda a: not checker.has_any_mod_role(context, a.author, print_error=False)  # Ignore moderation msgs.
+                and not a.pinned  # Ignore pinned messages
+                and not a.type.name == 'pins_add',  # Ignore pin notifications
+                recruitment_announces
+            ))
 
-        recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
-        recruitment_announces = await recruitment_channel.history(
-            after=after.replace(tzinfo=None),
-            limit=limit,
-            oldest_first=False  # Search in reverse in case the filters limit the results
-        ).flatten()
-        recruitment_announces.reverse()  # Reverse again to have oldest match in first place
-        recruitment_announces = list(filter(
-            lambda a: not checker.has_any_mod_role(context, a.author, print_error=False)  # Ignore moderation messages
-            and not a.pinned  # Ignore pinned messages
-            and not a.type.name == 'pins_add',  # Ignore pin notifications
-            recruitment_announces
-        ))
-
-        await self.check_authors_clan_contact_role(context, recruitment_announces)
-        await self.check_recruitment_announces_uniqueness(context, recruitment_announces)
-        await self.check_recruitment_announces_length(context, recruitment_announces)
-        await self.check_recruitment_announces_embeds(context, recruitment_announces)
-        await self.check_recruitment_announces_timespan(context, recruitment_channel, recruitment_announces)
-
-        add_reaction and await context.message.remove_reaction(self.WORK_IN_PROGRESS_EMOJI, self.user)
-        add_reaction and await context.message.add_reaction(self.WORK_DONE_EMOJI)
+            await self.check_authors_clan_contact_role(context, recruitment_announces)
+            await self.check_recruitment_announces_uniqueness(context, recruitment_announces)
+            await self.check_recruitment_announces_length(context, recruitment_announces)
+            await self.check_recruitment_announces_embeds(context, recruitment_announces)
+            await self.check_recruitment_announces_timespan(
+                context, recruitment_channel, recruitment_announces, self.db
+            )
 
     @staticmethod
     async def check_authors_clan_contact_role(context, announces):
@@ -457,14 +436,14 @@ class Admin(_command.Command):
         return embedded_announces
 
     @staticmethod
-    async def check_recruitment_announces_timespan(context, channel, announces):
+    async def check_recruitment_announces_timespan(context, channel, announces, db):
         """Check that no announce is re-posted before a given timespan."""
-        zbot.db.update_recruitment_announces(await channel.history().flatten())
+        db.update_recruitment_announces([message async for message in channel.history()])
 
         # Get records of all deleted announces
         # Still existing announces are handled by Admin.check_recruitment_announces_uniqueness
         author_last_announce_data = {}
-        for announce_data in zbot.db.load_recruitment_announces_data(
+        for announce_data in db.load_recruitment_announces_data(
             query={'_id': {'$nin': list(map(lambda a: a.id, announces))}},
             order=[('time', -1)],
         ):
@@ -537,11 +516,11 @@ class Admin(_command.Command):
             member = None
         require_contact_role = not utils.is_option_enabled(options, 'all')
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
-        zbot.db.update_recruitment_announces(await recruitment_channel.history().flatten())
+        self.db.update_recruitment_announces([message async for message in recruitment_channel.history()])
 
         # Get the record of each author's last announce (deleted or not)
         author_last_announce_data = {}
-        for announce_data in zbot.db.load_recruitment_announces_data(
+        for announce_data in self.db.load_recruitment_announces_data(
             query={'author': member.id} if member else {},
             order=[('time', -1)]
         ):
@@ -635,7 +614,7 @@ class Admin(_command.Command):
         recruitment_channel = self.guild.get_channel(self.RECRUITMENT_CHANNEL_ID)
         if isinstance(target, discord.Member):
             author = target
-            all_recruitment_announces = await recruitment_channel.history(oldest_first=False).flatten()
+            all_recruitment_announces = [message async for message in recruitment_channel.history(oldest_first=False)]
             recruitment_announces = list(filter(lambda a: a.author == author, all_recruitment_announces))
             last_recruitment_announce = recruitment_announces and recruitment_announces[0]
         else:
@@ -663,7 +642,7 @@ class Admin(_command.Command):
         await self.check_recruitment_announces_embeds(patched_context, [last_recruitment_announce]) \
             or self.send_buffer.pop()
         await self.check_recruitment_announces_timespan(
-            patched_context, recruitment_channel, [last_recruitment_announce]
+            patched_context, recruitment_channel, [last_recruitment_announce], self.db
         ) or self.send_buffer.pop()
 
         if not self.send_buffer:
@@ -737,9 +716,9 @@ class Admin(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def clear_recruitment(self, context, member: discord.Member, time: converter.to_datetime = None):
-        zbot.db.delete_recruitment_announces({'author': member.id})
+        self.db.delete_recruitment_announces({'author': member.id})
         if time:
-            zbot.db.insert_recruitment_announce(
+            self.db.insert_recruitment_announce(
                 member, time - datetime.timedelta(days=self.MIN_RECRUITMENT_ANNOUNCE_TIMESPAN)
             )
         await context.send(
@@ -748,5 +727,5 @@ class Admin(_command.Command):
         )
 
 
-def setup(bot):
-    bot.add_cog(Admin(bot))
+async def setup(bot):
+    await bot.add_cog(Admin(bot))

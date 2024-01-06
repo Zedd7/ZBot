@@ -5,12 +5,12 @@ import sys
 import discord
 from discord.ext import commands
 
-from zbot import checker
-from zbot import exceptions
-from zbot import logger
-from zbot import utils
-from zbot import zbot
-from zbot import converter
+from .. import checker
+from .. import exceptions
+from .. import logger
+from .. import utils
+from .. import zbot
+from .. import converter
 from . import _command
 
 
@@ -353,7 +353,7 @@ class Bot(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_start(self, context):
-        zbot.db.update_metadata('work_in_progress', True)
+        self.db.update_metadata('work_in_progress', True)
         await context.message.delete()
         await context.send(
             f"**Début des travaux sur le bot {self.user.mention}** :man_factory_worker:"
@@ -370,7 +370,7 @@ class Bot(_command.Command):
     @commands.check(checker.has_any_mod_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_done(self, context):
-        zbot.db.update_metadata('work_in_progress', False)
+        self.db.update_metadata('work_in_progress', False)
         await context.message.delete()
         await context.send(
             f"**Fin des travaux sur le bot {self.user.mention}** :mechanical_arm:"
@@ -386,7 +386,7 @@ class Bot(_command.Command):
     @commands.check(checker.has_any_user_role)
     @commands.check(checker.is_allowed_in_current_guild_channel)
     async def work_status(self, context):
-        work_in_progress = zbot.db.get_metadata('work_in_progress') or False  # Might not be set
+        work_in_progress = self.db.get_metadata('work_in_progress') or False  # Might not be set
         if work_in_progress:
             await context.send(
                 f"**Les travaux sur le bot {self.user.mention} sont toujours en cours** :tools:"
@@ -409,7 +409,7 @@ class Bot(_command.Command):
     async def logout(self, context):
         logger.info("Logging out...")
         await context.send(f"Déconnexion.")
-        await self.bot.logout()
+        await self.bot.close()
         sys.exit()
 
     @staticmethod
@@ -419,5 +419,5 @@ class Bot(_command.Command):
         return bot_user.display_name
 
 
-def setup(bot):
-    bot.add_cog(Bot(bot))
+async def setup(bot):
+    await bot.add_cog(Bot(bot))

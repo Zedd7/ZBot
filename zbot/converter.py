@@ -9,7 +9,6 @@ import pytz
 import tzlocal
 from discord.ext import commands
 
-from zbot import zbot
 from . import exceptions
 from . import utils
 
@@ -87,36 +86,38 @@ def to_human_format(time: datetime.datetime) -> str:
 
 # Emojis
 
-def to_emoji(arg: str) -> typing.Union[discord.Emoji, str]:
-    emojis = to_emoji_list(arg)
-    if not emojis or len(emojis) > 1:  # Empty string or multiple emojis
-        raise commands.BadArgument
-    return emojis[0]
+class EmojiConverter(commands.Converter):
+    async def convert(self, ctx, arg: str) -> typing.Union[discord.Emoji, str]:
+        emojis = await EmojisListConverter().convert(ctx, arg)
+        if not emojis or len(emojis) > 1:  # Empty string or multiple emojis
+            raise commands.BadArgument
+        return emojis[0]
 
 
-def to_emoji_list(arg: str) -> typing.List[typing.Union[discord.Emoji, str]]:
-    emoji_pattern = re.compile(r'^<a?:([a-zA-Z0-9_]+):(\d+)>$')
-    emoji_list = []
-    for emoji_code in arg.split():
-        if emoji_matches := emoji_lib.get(emoji_code):  # Emoji is a unicode string
-            if len(emoji_matches) == 1 and emoji_matches.pop() == emoji_code:
-                emoji_list.append(emoji_code)
-            else:
-                raise exceptions.ForbiddenEmoji(emoji_code)
-        else:  # Emoji is a custom image
-            # Match custom emoji looking strings
-            if match_result := emoji_pattern.search(emoji_code):
-                # Extract emoji_id from first regex group
-                emoji_name, emoji_id = match_result.group(1, 2)
-                # Get emoji from list of emojis visible by bot
-                if emoji := discord.utils.get(zbot.bot.emojis, id=int(emoji_id)):
-                    emoji_list.append(emoji)
+class EmojisListConverter(commands.Converter):
+    async def convert(self, ctx, arg: str) -> typing.List[typing.Union[discord.Emoji, str]]:
+        emoji_pattern = re.compile(r'^<a?:([a-zA-Z0-9_]+):(\d+)>$')
+        emoji_list = []
+        for emoji_code in arg.split():
+            if emoji_matches := emoji_lib.get(emoji_code):  # Emoji is a unicode string
+                if len(emoji_matches) == 1 and emoji_matches.pop() == emoji_code:
+                    emoji_list.append(emoji_code)
                 else:
-                    raise exceptions.ForbiddenEmoji(f":{emoji_name}:")
-            else:
-                raise exceptions.ForbiddenEmoji(emoji_code)
-    emoji_list = list(dict.fromkeys(emoji_list))  # Remove duplicates while preserving order
-    return emoji_list
+                    raise exceptions.ForbiddenEmoji(emoji_code)
+            else:  # Emoji is a custom image
+                # Match custom emoji looking strings
+                if match_result := emoji_pattern.search(emoji_code):
+                    # Extract emoji_id from first regex group
+                    emoji_name, emoji_id = match_result.group(1, 2)
+                    # Get emoji from list of emojis visible by bot
+                    if emoji := discord.utils.get(ctx.bot.emojis, id=int(emoji_id)):
+                        emoji_list.append(emoji)
+                    else:
+                        raise exceptions.ForbiddenEmoji(f":{emoji_name}:")
+                else:
+                    raise exceptions.ForbiddenEmoji(emoji_code)
+        emoji_list = list(dict.fromkeys(emoji_list))  # Remove duplicates while preserving order
+        return emoji_list
 
 
 # Miscellaneous

@@ -1,5 +1,7 @@
-from discord.ext import commands
+import traceback
 
+from discord.ext import commands
+import sys
 from . import exceptions
 from . import logger
 from .cogs.bot import Bot
@@ -25,7 +27,7 @@ async def handle(context, error):
             f"Entourez chaque texte de double guillemets `\"comme ceci\"`.")
         await Bot.display_command_usage(context, context.invoked_with)
     elif isinstance(error, commands.MissingPermissions):
-        await context.send(f"Permissions requises : {', '.join(error.missing_perms)}")
+        await context.send(f"Permissions requises : {', '.join(error.missing_permissions)}")
     elif isinstance(error, commands.MissingRequiredArgument):
         await context.send(f"Argument manquant : `{error.param.name}`")
         await Bot.display_command_usage(context, context.invoked_with)
@@ -93,4 +95,4 @@ async def handle(context, error):
     elif isinstance(error, commands.errors.CheckFailure):
         pass
     else:
-        logger.error(error, exc_info=True)
+        logger.error(''.join(traceback.format_exception(type(error), error, error.__traceback__)))
