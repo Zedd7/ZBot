@@ -37,7 +37,7 @@ class Server(_command.Command):
     DISCUSSION_CHANNELS = [
         'général', 'gameplay', 'mentorat', 'actualités', 'promotion', 'recrutement', 'suggestions', 'memes']
     PRIMARY_ROLES = [
-        'Administrateur', 'Modérateur', 'Wargaming', 'Contributeur', 'Mentor', 'Contact de clan', 'Joueur', 'Visiteur',
+        'Administrateur', 'Modérateur', 'Contributeur', 'Mentor', 'Contact de clan', 'Joueur', 'Visiteur', 'Rondoudou'
     ]
 
     def __init__(self, bot):
@@ -56,7 +56,7 @@ class Server(_command.Command):
                 self.SERVER_STATS_RECORD_FREQUENCY,
                 tolerance=datetime.timedelta(minutes=5)
             ):
-                logger.debug(f"Prevented recording server stats because running above define frequency.")
+                logger.debug(f"Prevented recording server stats because running above defined frequency.")
                 return
 
         await self.record_member_count(now)
@@ -91,15 +91,16 @@ class Server(_command.Command):
         role_sizes = {}
         for primary_role_name in self.PRIMARY_ROLES:
             guild_role = utils.try_get(context.guild.roles, name=primary_role_name)
-            role_sizes[primary_role_name] = len(guild_role.members)
+            if guild_role:  # The role still exists.
+                role_sizes[primary_role_name] = len(guild_role.members)
 
         embed = discord.Embed(
             title=f"Décompte des membres du serveur",
             description=f"Total : **{len(context.guild.members)}** membres pour "
-                        f"**{len(self.PRIMARY_ROLES)}** rôles principaux",
+                        f"**{len(role_sizes)}** rôles principaux",
             color=self.EMBED_COLOR
         )
-        for role_name in self.PRIMARY_ROLES:
+        for role_name in role_sizes:
             embed.add_field(
                 name=role_name,
                 value=f"**{role_sizes[role_name]}** membres",
@@ -135,8 +136,7 @@ class Server(_command.Command):
              "`--time=days` où `days` est le nombre de jours à considérer. L'axe du temps est automatiquement ajusté "
              "au nombre de jours : Jusqu'à une période de 3 jours, 12 mois et 2 ans (exclus), l'axe affiche "
              "respectivement des heures, des jours et des mois. Pour forcer un type d'affichage, il faut fournir l'un "
-             "des arguments suivants : `--hour`, `--day`, `--month`, `--year`. Il est également possible de scinder "
-             "l'affichage par rôle en fournissant l'argument `--split`.",
+             "des arguments suivants : `--hour`, `--day`, `--month`, `--year`.",
         ignore_extra=True,
     )
     @commands.check(checker.has_any_user_role)
